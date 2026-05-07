@@ -1,67 +1,81 @@
 import streamlit as st
 import google.generativeai as genai
+import gspread
+from google.oauth2.service_account import Credentials
+from streamlit_autorefresh import st_autorefresh
 import random
 import time
-from streamlit_autorefresh import st_autorefresh
-# 匯入 Google Sheets 操作套件
-# import gspread
-# from oauth2client.service_account import ServiceAccountCredentials
 
 # ==========================================
-# 1. 遊戲設定與自動更新 (解決併發問題)
+# 0. 頁面基本設定
 # ==========================================
-# 每 5000 毫秒 (5秒) 自動重新整理一次頁面
-# 這樣就算對方發言，5秒內你的畫面也會自動抓取最新進度
-count = st_autorefresh(interval=5000, limit=None, key="room_sync")
+st.set_page_config(page_title="雙人成語接龍", page_icon="🔗", layout="centered")
 
 # ==========================================
-# 2. Google Sheets 快取讀寫邏輯 (解決 API 效能問題)
+# 1. 初始化設定 (Gemini & Google Sheets)
 # ==========================================
-# 實際開發時，把認證與連線寫在這裡
-# scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-# creds = ServiceAccountCredentials.from_json_keyfile_name("your-secret.json", scope)
-# client = gspread.authorize(creds)
-# spreadsheet = client.open("Idiom_Game_DB")
+# 讀取 Gemini API Key 並設定模型
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except Exception as e:
+    st.error("請確認是否已在 Streamlit Secrets 中設定好 `GEMINI_API_KEY`！")
+    st.stop()
 
-# 使用 ttl=5 (5秒過期快取)，避免每次重新整理都去呼叫 Google Sheets API
+# 設定 Google Sheets 連線
+try:
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scopes
+    )
+    client = gspread.authorize(credentials)
+    
+    # ⚠️ 請確保你已經在 Google Drive 建立了一個名為 "Idiom_Game_DB" 的試算表
+    # 並且將你的 Service Account Email 加入該試算表的「編輯者」共用名單中
+    spreadsheet = client.open("Idiom_Game_DB")
+except Exception as e:
+    st.error("Google Sheets 連線失敗！請確認 Secrets 設定以及試算表名稱與共用權限。")
+    st.stop()
+
+# ==========================================
+# 2. 自動更新機制
+# ==========================================
+# 每 5000 毫秒 (5秒) 自動重新執行一次網頁，讓雙方畫面同步
+st_autorefresh(interval=5000, limit=None, key="room_sync")
+
+# ==========================================
+# 3. Google Sheets 快取與讀寫邏輯
+# ==========================================
 @st.cache_data(ttl=5)
 def get_room_history(room_name):
-    """從 Google Sheets 讀取該房間的歷史對話"""
-    # 實際串接邏輯：
-    # try:
-    #     worksheet = spreadsheet.worksheet(room_name)
-    # except gspread.WorksheetNotFound:
-    #     worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="4")
-    #     worksheet.append_row(["Timestamp", "User", "Text", "Type"]) # 寫入標題
-    # 
-    # records = worksheet.get_all_records()
-    # return records
+    """從 Google Sheets 讀取該房間的歷史對話，設定 5 秒快取避免 API 超載"""
+    try:
+        worksheet = spreadsheet.worksheet(room_name)
+    except gspread.WorksheetNotFound:
+        # 如果房間不存在，就建立一個新的工作表
+        worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="4")
+        worksheet.append_row(["Timestamp", "User", "Text", "Type"]) # 寫入標題列
+        return []
     
-    # 雛形階段：模擬回傳 (如果 session_state 裡有東西就回傳，模擬從資料庫抓資料)
-    if f"db_{room_name}" not in st.session_state:
-        st.session_state[f"db_{room_name}"] = []
-    return st.session_state[f"db_{room_name}"]
+    # 取得所有紀錄，略過第一行的標題
+    records = worksheet.get_all_records()
+    return records
 
 def save_message(room_name, user, text, msg_type="chat"):
     """將新訊息寫入 Google Sheets，並清除快取以強制抓取最新資料"""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    worksheet = spreadsheet.worksheet(room_name)
+    worksheet.append_row([timestamp, user, text, msg_type])
     
-    # 實際串接邏輯：
-    # worksheet = spreadsheet.worksheet(room_name)
-    # worksheet.append_row([timestamp, user, text, msg_type])
-    
-    # 雛形階段模擬：
-    new_msg = {"Timestamp": timestamp, "User": user, "Text": text, "Type": msg_type}
-    if f"db_{room_name}" not in st.session_state:
-         st.session_state[f"db_{room_name}"] = []
-    st.session_state[f"db_{room_name}"].append(new_msg)
-
-    # 【關鍵】寫入新資料後，馬上清除讀取快取！
-    # 這樣程式重新執行時，get_room_history 才會去抓取包含剛剛發言的最新資料
+    # 寫入新資料後，馬上清除讀取快取，確保下次重繪畫面時能抓到這筆最新發言
     st.cache_data.clear()
 
 # ==========================================
-# 3. 側邊欄：房間與玩家設定
+# 4. 側邊欄：房間與玩家設定
 # ==========================================
 with st.sidebar:
     st.header("🚪 遊戲大廳")
@@ -72,14 +86,13 @@ with st.sidebar:
         if room_name and player_name:
             st.session_state['room'] = room_name
             st.session_state['player'] = player_name
-            # 進入新房間，清除舊快取
-            st.cache_data.clear() 
+            st.cache_data.clear() # 進入新房間，強制清除快取
             st.rerun()
         else:
             st.warning("請完整輸入房間與名稱！")
 
 # ==========================================
-# 4. 主畫面：聊天室與遊戲介面
+# 5. 主畫面：聊天室與遊戲介面
 # ==========================================
 st.title("🔗 雙人成語接龍")
 
@@ -88,47 +101,63 @@ if 'room' in st.session_state and 'player' in st.session_state:
     current_player = st.session_state['player']
     st.caption(f"📍 目前位置：{current_room} | 👤 玩家：{current_player}")
     
-    # 取得房間對話紀錄 (有快取保護，不會瘋狂吃 API 額度)
+    # 取得房間對話紀錄
     chat_history = get_room_history(current_room)
     
     # --- 控制面板 ---
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🎲 AI 隨機出題並抽籤", use_container_width=True):
-            starting_idiom = "一馬當先" # 之後串 Gemini
-            players = [current_player, "女友"] # 雛形寫死
-            first_player = random.choice(players)
-            
-            system_msg = f"【系統廣播】遊戲開始！初始成語為「**{starting_idiom}**」。由 {first_player} 先開始！"
-            save_message(current_room, "System", system_msg, "system")
-            st.rerun()
+        if st.button("🎲 AI 隨機出題", use_container_width=True):
+            with st.spinner("AI 正在思考中..."):
+                try:
+                    response = model.generate_content("請隨機給出一個常見的繁體中文成語，只需回答四字成語即可，不要其他廢話。")
+                    starting_idiom = response.text.strip()
+                    
+                    system_msg = f"【系統廣播】遊戲開始！初始成語為「**{starting_idiom}**」。請自由決定誰先開始！"
+                    save_message(current_room, "System", system_msg, "system")
+                    st.rerun()
+                except Exception as e:
+                    st.error("呼叫 AI 發生錯誤。")
             
     with col2:
         if st.button("⚖️ 呼叫 AI 裁判", use_container_width=True):
-            # 抓取最後一句非系統的玩家發言
+            # 抓取最後一句玩家發言
             last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
             
             if last_msg:
-                judge_result = f"✅ 裁判判定：「{last_msg}」是標準成語！" # 之後串 Gemini
-                save_message(current_room, "Referee (AI)", judge_result, "referee")
-                st.rerun()
+                with st.spinner("裁判判定中..."):
+                    try:
+                        prompt = f"請判斷「{last_msg}」是否為一個標準的中文成語，並簡短解釋其意思。如果是成語請回答『✅ 裁判判定：是成語！』開頭，否則回答『❌ 裁判判定：不是成語！』開頭。請用繁體中文回答。"
+                        response = model.generate_content(prompt)
+                        judge_result = response.text.strip()
+                        
+                        save_message(current_room, "Referee (AI)", judge_result, "referee")
+                        st.rerun()
+                    except Exception as e:
+                        st.error("呼叫 AI 發生錯誤。")
             else:
                 st.toast("目前還沒有人輸入成語喔！")
 
     st.divider()
 
     # --- 顯示歷史對話 ---
-    for msg in chat_history:
-        if msg["Type"] == "system":
-            st.info(msg["Text"])
-        elif msg["Type"] == "referee":
-            with st.chat_message("ai"):
-                st.write(msg["Text"])
+    # 將畫面捲動區塊稍微留點空間給下方的輸入框
+    chat_container = st.container(height=400)
+    with chat_container:
+        if not chat_history:
+            st.info("房間剛建立，趕快按下「AI 隨機出題」開始遊戲吧！")
         else:
-            is_self = (msg["User"] == current_player)
-            avatar = "😎" if is_self else "👩"
-            with st.chat_message("user", avatar=avatar):
-                st.write(f"**{msg['User']}**: {msg['Text']}")
+            for msg in chat_history:
+                if msg["Type"] == "system":
+                    st.info(msg["Text"])
+                elif msg["Type"] == "referee":
+                    with st.chat_message("ai"):
+                        st.write(msg["Text"])
+                else:
+                    is_self = (msg["User"] == current_player)
+                    avatar = "😎" if is_self else "👩"
+                    with st.chat_message("user", avatar=avatar):
+                        st.write(f"**{msg['User']}**: {msg['Text']}")
 
     # --- 輸入框 ---
     user_input = st.chat_input("輸入你的成語...")
