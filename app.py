@@ -66,7 +66,7 @@ def save_message(room_name, user, text, msg_type="chat"):
 # ==========================================
 # 3. 主畫面邏輯
 # ==========================================
-st.title("🐉成語接龍")
+st.title("成語接龍🐉")
 
 # --- 狀態一：登入大廳 ---
 if 'room' not in st.session_state or 'player' not in st.session_state:
