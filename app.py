@@ -8,7 +8,7 @@ import time
 # ==========================================
 # 0. 頁面基本設定
 # ==========================================
-st.set_page_config(page_title="成語接龍", page_icon="🔗", layout="centered")
+st.set_page_config(page_title="雙人成語接龍", page_icon="🔗", layout="centered")
 
 # ==========================================
 # 1. 初始化設定 (Gemini & Google Sheets)
@@ -43,6 +43,9 @@ custom_safety_settings = [
     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
 ]
 
+# 表情貼清單
+AVATAR_LIST = ["🥴", "🤩", "🤓", "😎", "🥸", "😇", "😉", "🫪", "👧", "🧒", "👦", "👩", "🧑", "👨", "👩‍🦰", "🧑‍🦰", "👨‍🦰", "👱‍♀️", "👱", "👱‍♂️", "👩‍🦳", "🧑‍🦳", "👨‍🦳", "👩‍🦲", "🧑‍🦲"]
+
 # ==========================================
 # 2. Google Sheets 讀寫邏輯
 # ==========================================
@@ -51,22 +54,45 @@ def get_room_history(room_name):
     try:
         worksheet = spreadsheet.worksheet(room_name)
     except gspread.WorksheetNotFound:
-        worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="4")
-        worksheet.append_row(["Timestamp", "User", "Text", "Type"])
+        # 如果是新房間，建立 5 欄的表頭
+        worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="5")
+        worksheet.append_row(["Timestamp", "User", "Text", "Type", "Avatar"])
         return []
     records = worksheet.get_all_records()
     return records
 
-def save_message(room_name, user, text, msg_type="chat"):
+def save_message(room_name, user, text, msg_type="chat", avatar=""):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     worksheet = spreadsheet.worksheet(room_name)
-    worksheet.append_row([timestamp, user, text, msg_type])
+    # 寫入五個欄位
+    worksheet.append_row([timestamp, user, text, msg_type, avatar])
+    st.cache_data.clear()
+
+def clear_game_data(room_name):
+    """清空指定房間除了標題以外的所有內容"""
+    worksheet = spreadsheet.worksheet(room_name)
+    # 刪除第 2 列到最後一列
+    rows_count = len(worksheet.get_all_values())
+    if rows_count > 1:
+        worksheet.delete_rows(2, rows_count)
     st.cache_data.clear()
 
 # ==========================================
-# 3. 主畫面邏輯
+# 3. 彈窗與按鈕邏輯
 # ==========================================
-st.title("成語接龍🐉")
+@st.dialog("⚠️ 確定要重新開始嗎？")
+def confirm_restart_dialog(room_name):
+    st.write(f"這將會清空「{room_name}」房間的所有對話紀錄且無法復原。")
+    if st.button("確定清空，重新開始", type="primary", use_container_width=True):
+        clear_game_data(room_name)
+        st.success("遊戲已重置！")
+        time.sleep(1)
+        st.rerun()
+
+# ==========================================
+# 4. 主畫面邏輯
+# ==========================================
+st.title("🔗 雙人成語接龍")
 
 # --- 狀態一：登入大廳 ---
 if 'room' not in st.session_state or 'player' not in st.session_state:
@@ -87,6 +113,7 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
 
         st.divider()
 
+        # 角色名稱與頭像選擇
         player_options = []
         if room_choice != "--- 建立新房間 ---" and final_room_name:
             try:
@@ -97,16 +124,22 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
             except Exception:
                 player_options = []
 
-        player_choice = st.selectbox("選擇你的身份", options=["--- 使用新名字 ---"] + player_options)
-        if player_choice == "--- 使用新名字 ---":
-            final_player_name = st.text_input("你的名字", key="new_player_input")
-        else:
-            final_player_name = player_choice
+        col_p, col_a = st.columns([2, 1])
+        with col_p:
+            player_choice = st.selectbox("選擇身份", options=["--- 使用新名字 ---"] + player_options)
+            if player_choice == "--- 使用新名字 ---":
+                final_player_name = st.text_input("名字", key="new_player_input")
+            else:
+                final_player_name = player_choice
         
+        with col_a:
+            selected_avatar = st.selectbox("選擇頭像貼", options=AVATAR_LIST)
+
         if st.button("🚀 確認進入", type="primary", use_container_width=True):
             if final_room_name and final_player_name:
                 st.session_state['room'] = final_room_name
                 st.session_state['player'] = final_player_name
+                st.session_state['avatar'] = selected_avatar
                 st.cache_data.clear()
                 st.rerun()
             else:
@@ -116,18 +149,18 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
 else:
     current_room = st.session_state['room']
     current_player = st.session_state['player']
+    current_avatar = st.session_state.get('avatar', '😎')
     chat_history = get_room_history(current_room)
 
     # ==========================================
-    # 4. 側邊欄控制台 (僅在遊戲室顯示)
+    # 5. 側邊欄控制台
     # ==========================================
     with st.sidebar:
         st.header("🎮 遊戲控制台")
-        st.caption(f"📍 房間：{current_room}")
-        st.caption(f"👤 身份：{current_player}")
+        st.write(f"📍 房間：{current_room}")
+        st.write(f"👤 身份：{current_player} {current_avatar}")
         st.divider()
         
-        # 🎲 AI 出題按鈕
         if st.button("🎲 AI 隨機出題", use_container_width=True):
             with st.status("AI 思考中...", expanded=False):
                 try:
@@ -140,7 +173,6 @@ else:
                 except Exception as e:
                     st.error(f"出題失敗：{e}")
 
-        # ⚖️ AI 裁判按鈕
         if st.button("⚖️ AI 裁判判斷", use_container_width=True):
             last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
             if last_msg:
@@ -155,7 +187,6 @@ else:
             else:
                 st.toast("目前尚無訊息可判斷")
 
-        # 💡 AI 提示按鈕
         if st.button("💡 獲取 AI 提示", use_container_width=True):
             last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
             if last_msg:
@@ -172,13 +203,17 @@ else:
                         st.error(f"提示失敗：{e}")
         
         st.divider()
+        # 清除遊戲按鈕
+        if st.button("🧹 清除遊戲重新開始", use_container_width=True):
+            confirm_restart_dialog(current_room)
+
         if st.button("🚪 返回大廳", use_container_width=True):
             del st.session_state['room']
             del st.session_state['player']
             st.rerun()
 
     # ==========================================
-    # 5. 聊天室主畫面 (局部更新)
+    # 6. 聊天室主畫面 (局部更新)
     # ==========================================
     @st.fragment(run_every=5)
     def display_chat_room(room_name, player_name):
@@ -189,20 +224,25 @@ else:
                 st.info("趕快開始出題吧！")
             else:
                 for msg in history:
-                    if msg["Type"] == "system":
-                        st.info(msg["Text"])
-                    elif msg["Type"] == "referee":
+                    msg_type = msg.get("Type", "chat")
+                    msg_user = msg.get("User", "")
+                    msg_text = msg.get("Text", "")
+                    msg_avatar = msg.get("Avatar", "😎") # 讀取該訊息發出時的頭像
+
+                    if msg_type == "system":
+                        st.info(msg_text)
+                    elif msg_type == "referee":
                         with st.chat_message("ai"):
-                            st.write(msg["Text"])
+                            st.write(msg_text)
                     else:
-                        is_self = (msg["User"] == player_name)
-                        avatar = "😎" if is_self else "👩"
-                        with st.chat_message("user", avatar=avatar):
-                            st.write(f"**{msg['User']}**: {msg['Text']}")
+                        is_self = (msg_user == player_name)
+                        # 使用儲存在該則訊息中的頭像
+                        with st.chat_message("user", avatar=msg_avatar):
+                            st.write(f"**{msg_user}**: {msg_text}")
 
     display_chat_room(current_room, current_player)
 
     user_input = st.chat_input("輸入你的成語...")
     if user_input:
-        save_message(current_room, current_player, user_input, "chat")
+        save_message(current_room, current_player, user_input, "chat", current_avatar)
         st.rerun()
