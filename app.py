@@ -15,7 +15,7 @@ st.set_page_config(page_title="成語接龍", page_icon="🔗", layout="centered
 # ==========================================
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-3.1-flash-lite')
+    model = genai.GenerativeModel('gemini-3-flash-preview')
 except Exception as e:
     st.error("請確認是否已在 Streamlit Secrets 中設定好 `GEMINI_API_KEY`！")
     st.stop()
