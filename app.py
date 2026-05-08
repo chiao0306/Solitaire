@@ -233,7 +233,11 @@ else:
                     msg_type = msg.get("Type", "chat")
                     msg_user = msg.get("User", "")
                     msg_text = msg.get("Text", "")
-                    msg_avatar = msg.get("Avatar", "😎") # 讀取該訊息發出時的頭像
+                    
+                    # 抓取頭像，如果是舊訊息 (空字串或 None)，就給預設表情
+                    msg_avatar = msg.get("Avatar")
+                    if not msg_avatar:  
+                        msg_avatar = "😎"
 
                     if msg_type == "system":
                         st.info(msg_text)
