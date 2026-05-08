@@ -8,7 +8,7 @@ import time
 # ==========================================
 # 0. 頁面基本設定
 # ==========================================
-st.set_page_config(page_title="雙人成語接龍", page_icon="🔗", layout="centered")
+st.set_page_config(page_title="成語接龍", page_icon="🔗", layout="centered")
 
 # ==========================================
 # 1. 初始化設定 (Gemini & Google Sheets)
@@ -66,7 +66,7 @@ def save_message(room_name, user, text, msg_type="chat"):
 # ==========================================
 # 3. 主畫面邏輯
 # ==========================================
-st.title("🔗 雙人成語接龍")
+st.title("🐉成語接龍")
 
 # --- 狀態一：登入大廳 ---
 if 'room' not in st.session_state or 'player' not in st.session_state:
