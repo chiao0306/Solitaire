@@ -184,7 +184,7 @@ else:
             if last_msg:
                 with st.status("裁判審核中...", expanded=False):
                     try:
-                        prompt = f"請判斷「{last_msg}」是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
+                        prompt = f"請判斷「{last_msg}」嚴謹的判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
                         save_message(current_room, "Referee (AI)", response.text.strip(), "referee")
                         st.rerun()
