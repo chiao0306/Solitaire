@@ -47,25 +47,28 @@ custom_safety_settings = [
 AVATAR_LIST = ["🥴", "🤩", "🤓", "😎", "🥸", "😇", "😉", "🫪", "👧", "🧒", "👦", "👩", "🧑", "👨", "👩‍🦰", "🧑‍🦰", "👨‍🦰", "👱‍♀️", "👱", "👱‍♂️", "👩‍🦳", "🧑‍🦳", "👨‍🦳", "👩‍🦲", "🧑‍🦲"]
 
 # ==========================================
-# 2. Google Sheets 讀寫邏輯
+# 3. Google Sheets 快取與讀寫邏輯 (擴展至 6 欄)
 # ==========================================
 @st.cache_data(ttl=5)
 def get_room_history(room_name):
+    """從 Google Sheets 讀取歷史對話，增加第六欄 Hint_Answer"""
     try:
         worksheet = spreadsheet.worksheet(room_name)
     except gspread.WorksheetNotFound:
-        # 如果是新房間，建立 5 欄的表頭
-        worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="5")
-        worksheet.append_row(["Timestamp", "User", "Text", "Type", "Avatar"])
+        # 新房間建立 6 欄：時間, 使用者, 內容, 類型, 頭像, 提示成語答案
+        worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="6")
+        worksheet.append_row(["Timestamp", "User", "Text", "Type", "Avatar", "Hint_Answer"])
         return []
+    
     records = worksheet.get_all_records()
     return records
 
-def save_message(room_name, user, text, msg_type="chat", avatar=""):
+def save_message(room_name, user, text, msg_type="chat", avatar="", hint_answer=""):
+    """將新訊息寫入，並可選填入提示答案"""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     worksheet = spreadsheet.worksheet(room_name)
-    # 寫入五個欄位
-    worksheet.append_row([timestamp, user, text, msg_type, avatar])
+    # 寫入六個欄位
+    worksheet.append_row([timestamp, user, text, msg_type, avatar, hint_answer])
     st.cache_data.clear()
 
 def clear_game_data(room_name):
@@ -193,20 +196,52 @@ else:
             else:
                 st.toast("目前尚無訊息可判斷")
 
+        # 💡 AI 提示按鈕 (兩段式提示邏輯)
         if st.button("💡 獲取 AI 提示", use_container_width=True):
-            last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
-            if last_msg:
-                with st.status("翻閱典籍中...", expanded=False):
+            # 取得目前的最後一筆訊息資料
+            last_rec = chat_history[-1] if chat_history else None
+            
+            # --- 判斷是否為「第二階段提示」：上一則訊息是 AI 提示且含有隱藏答案 ---
+            if last_rec and last_rec.get("Type") == "referee" and last_rec.get("Hint_Answer"):
+                with st.status("AI 正在解析成語意思...", expanded=False):
                     try:
-                        last_char = last_msg[-1]
-                        prompt = f"請給出一個以「{last_char}」開頭（或同音）的四字成語。只回傳成語。"
+                        target_idiom = last_rec.get("Hint_Answer")
+                        # 提示詞要求 AI 不要講出答案
+                        prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                        if response and response.text:
-                            hint_char = response.text.strip()[-2]
-                            save_message(current_room, "Referee (AI)", f"💡 提示：下一句的倒數第二個字可以是「**{hint_char}**」", "referee")
-                            st.rerun()
+                        
+                        # 存入解釋訊息 (此則不帶 hint_answer，避免重複觸發)
+                        save_message(current_room, "Referee (AI)", f"📖 意思提示：\n{response.text.strip()}", "referee")
+                        st.rerun()
                     except Exception as e:
-                        st.error(f"提示失敗：{e}")
+                        st.error(f"解析失敗：{e}")
+            
+            # --- 否則為「第一階段提示」：給出字提示並存下答案 ---
+            else:
+                last_player_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
+                if last_player_msg:
+                    with st.status("翻閱典籍中...", expanded=False):
+                        try:
+                            last_char = last_player_msg[-1]
+                            prompt = f"請給出一個以「{last_char}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
+                            response = model.generate_content(prompt, safety_settings=custom_safety_settings)
+                            
+                            if response and response.text:
+                                ai_idiom = response.text.strip()[:4]
+                                hint_char = ai_idiom[-2] # 取倒數第二個字
+                                # 存入訊息，並將完整的成語答案存在最後一欄
+                                save_message(
+                                    current_room, 
+                                    "Referee (AI)", 
+                                    f"💡 字提示：下一句的倒數第二個字可以是「**{hint_char}**」", 
+                                    "referee", 
+                                    hint_answer=ai_idiom
+                                )
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"提示失敗：{e}")
+                else:
+                    st.toast("目前尚無訊息可提示")
         
         st.divider()
         # 清除遊戲按鈕
