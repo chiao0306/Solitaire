@@ -113,28 +113,34 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
 
         st.divider()
 
-        # 角色名稱與頭像選擇
+        # 角色名稱與頭像記憶邏輯
         player_options = []
+        player_avatars = {}
         if room_choice != "--- 建立新房間 ---" and final_room_name:
-            try:
-                ws = spreadsheet.worksheet(final_room_name)
-                all_users = ws.col_values(2)
-                exclude_list = ["User", "System", "Referee (AI)"]
-                player_options = sorted(list(set([u for u in all_users if u not in exclude_list])))
-            except Exception:
-                player_options = []
+            records = get_room_history(final_room_name)
+            for r in records:
+                u = str(r.get("User", ""))
+                if u and u not in ["System", "Referee (AI)"]:
+                    # 抓取該玩家最後一次使用的頭像，若無則預設為 😎
+                    a = str(r.get("Avatar", ""))
+                    player_avatars[u] = a if a else "😎"
+            player_options = sorted(list(player_avatars.keys()))
 
-        col_p, col_a = st.columns([2, 1])
-        with col_p:
-            player_choice = st.selectbox("選擇身份", options=["--- 使用新名字 ---"] + player_options)
-            if player_choice == "--- 使用新名字 ---":
-                final_player_name = st.text_input("名字", key="new_player_input")
-            else:
-                final_player_name = player_choice
+        player_choice = st.selectbox("選擇身份", options=["--- 使用新名字 ---"] + player_options)
         
-        with col_a:
-            selected_avatar = st.selectbox("選擇頭像貼", options=AVATAR_LIST)
+        # 判斷是否為新玩家，來決定要不要顯示頭像選擇器
+        if player_choice == "--- 使用新名字 ---":
+            col_p, col_a = st.columns([2, 1])
+            with col_p:
+                final_player_name = st.text_input("名字", key="new_player_input")
+            with col_a:
+                selected_avatar = st.selectbox("選擇頭像貼", options=AVATAR_LIST)
+        else:
+            final_player_name = player_choice
+            selected_avatar = player_avatars.get(final_player_name, "😎")
+            st.success(f"歡迎回來！你的專屬頭像：{selected_avatar}")
 
+        st.write("") # 排版留白
         if st.button("🚀 確認進入", type="primary", use_container_width=True):
             if final_room_name and final_player_name:
                 st.session_state['room'] = final_room_name
