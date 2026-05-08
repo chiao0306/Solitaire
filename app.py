@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 import gspread
 from google.oauth2.service_account import Credentials
-# from streamlit_autorefresh import st_autorefresh
 import random
 import time
 
@@ -51,13 +50,7 @@ custom_safety_settings = [
 ]
 
 # ==========================================
-# 2. 自動更新機制
-# ==========================================
-# 每 10000 毫秒 (10秒) 自動重新執行一次網頁，避開與 API 等待時間的衝突
-# st_autorefresh(interval=10000, limit=None, key="room_sync")
-
-# ==========================================
-# 3. Google Sheets 快取與讀寫邏輯
+# 2. Google Sheets 快取與讀寫邏輯
 # ==========================================
 @st.cache_data(ttl=5)
 def get_room_history(room_name):
@@ -79,47 +72,96 @@ def save_message(room_name, user, text, msg_type="chat"):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     worksheet = spreadsheet.worksheet(room_name)
     worksheet.append_row([timestamp, user, text, msg_type])
-    
-    # 寫入新資料後，馬上清除讀取快取，確保下次重繪畫面時能抓到這筆最新發言
     st.cache_data.clear()
 
 # ==========================================
-# 4. 側邊欄：房間與玩家設定
-# ==========================================
-with st.sidebar:
-    st.header("🚪 遊戲大廳")
-    room_name = st.text_input("輸入房間名稱", value=st.session_state.get('room', ''))
-    player_name = st.text_input("你的名字", value=st.session_state.get('player', ''))
-    
-    if st.button("進入房間"):
-        if room_name and player_name:
-            st.session_state['room'] = room_name
-            st.session_state['player'] = player_name
-            st.cache_data.clear() # 進入新房間，強制清除快取
-            st.rerun()
-        else:
-            st.warning("請完整輸入房間與名稱！")
-
-# ==========================================
-# 5. 主畫面：聊天室與遊戲介面
+# 3. 主畫面切換邏輯 (大廳 vs 遊戲室)
 # ==========================================
 st.title("🔗 雙人成語接龍")
 
-if 'room' in st.session_state and 'player' in st.session_state:
+# --- 狀態一：還沒進入房間 (顯示登入大廳) ---
+if 'room' not in st.session_state or 'player' not in st.session_state:
+    
+    # 使用 container(border=True) 弄一個漂亮的登入卡片
+    with st.container(border=True):
+        st.subheader("🚪 進入遊戲大廳")
+        
+        # --- 抓取試算表所有分頁 ---
+        try:
+            all_worksheets = spreadsheet.worksheets()
+            room_options = [ws.title for ws in all_worksheets]
+        except Exception:
+            room_options = []
+        
+        room_choice = st.selectbox(
+            "快速進入房間", 
+            options=["--- 建立新房間 ---"] + room_options
+        )
+        
+        if room_choice == "--- 建立新房間 ---":
+            final_room_name = st.text_input("輸入新房間名稱 (例如：週末挑戰賽)", key="new_room_input")
+        else:
+            final_room_name = room_choice
+
+        st.divider()
+
+        # --- 抓取該房間不重複使用者 ---
+        player_options = []
+        if room_choice != "--- 建立新房間 ---" and final_room_name:
+            try:
+                ws = spreadsheet.worksheet(final_room_name)
+                all_users = ws.col_values(2)
+                exclude_list = ["User", "System", "Referee (AI)"]
+                player_options = sorted(list(set([u for u in all_users if u not in exclude_list])))
+            except Exception:
+                player_options = []
+
+        player_choice = st.selectbox(
+            "選擇你的身份",
+            options=["--- 使用新名字 ---"] + player_options
+        )
+        
+        if player_choice == "--- 使用新名字 ---":
+            final_player_name = st.text_input("你的名字", key="new_player_input")
+        else:
+            final_player_name = player_choice
+        
+        st.write("") # 增加一點排版空白
+        
+        # --- 進入按鈕 ---
+        if st.button("🚀 確認進入", type="primary", use_container_width=True):
+            if final_room_name and final_player_name:
+                st.session_state['room'] = final_room_name
+                st.session_state['player'] = final_player_name
+                st.cache_data.clear() # 強制更新快取以載入新資料
+                st.rerun()
+            else:
+                st.warning("請確保房間名稱與你的名字都有填寫喔！")
+
+
+# --- 狀態二：已進入房間 (顯示遊戲介面) ---
+else:
     current_room = st.session_state['room']
     current_player = st.session_state['player']
-    st.caption(f"📍 目前位置：{current_room} | 👤 玩家：{current_player}")
     
-    # 取得房間對話紀錄
+    # 頂部狀態列與退出按鈕
+    colA, colB = st.columns([3, 1])
+    with colA:
+        st.caption(f"📍 目前位置：{current_room} | 👤 玩家：{current_player}")
+    with colB:
+        if st.button("🚪 返回大廳", use_container_width=True):
+            del st.session_state['room']
+            del st.session_state['player']
+            st.rerun()
+            
     chat_history = get_room_history(current_room)
     
     # --- 控制面板 ---
-    # 改成三個欄位，把提示按鈕加進去
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("🎲 AI 隨機出題", use_container_width=True):
-            with st.status("AI 正在想題目，請稍候...", expanded=True) as status:
+        if st.button("🎲 AI 出題", use_container_width=True):
+            with st.status("AI 正在想題目...", expanded=True) as status:
                 try:
                     prompt = "請給出一個有趣的繁體中文四字成語，直接回傳四個字即可，不要有任何標點符號或解釋。"
                     response = model.generate_content(prompt, safety_settings=custom_safety_settings)
@@ -134,58 +176,50 @@ if 'room' in st.session_state and 'player' in st.session_state:
                         status.update(label="出題成功！", state="complete", expanded=False)
                         st.rerun()
                     else:
-                        st.error("AI 回傳了空的內容，請再試一次。")
+                        st.error("AI 腦袋卡住了，請重試。")
                 except Exception as e:
-                    st.error(f"AI 出題失敗，原因：{str(e)}")
+                    st.error(f"出題失敗：{str(e)}")
             
     with col2:
-        if st.button("⚖️ 呼叫 AI 裁判", use_container_width=True):
-            # 抓取最後一句玩家發言
+        if st.button("⚖️ AI 裁判", use_container_width=True):
             last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
-            
             if last_msg:
                 with st.status("裁判正在看卷中...", expanded=True) as status:
                     try:
                         prompt = f"你是成語接龍裁判。請判斷「{last_msg}」是不是一個正式的中文成語。如果是請回傳『✅ 是成語』，如果不是請回傳『❌ 不是成語』，並附上一句簡單的解釋。請用繁體中文回答。"
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                        judge_result = response.text.strip()
-                        
-                        save_message(current_room, "Referee (AI)", judge_result, "referee")
+                        save_message(current_room, "Referee (AI)", response.text.strip(), "referee")
                         status.update(label="判定完成！", state="complete", expanded=False)
                         st.rerun()
                     except Exception as e:
-                        st.error(f"裁判罷工了，原因：{str(e)}")
+                        st.error(f"判定失敗：{str(e)}")
             else:
                 st.toast("目前還沒有人輸入成語喔！")
 
     with col3:
-        if st.button("💡 AI 給個提示", use_container_width=True):
-            # 抓取最後一句玩家發言
+        if st.button("💡 提示", use_container_width=True):
             last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
-            
             if last_msg:
-                last_char = last_msg[-1] # 取出最後一個字
-                with st.status("AI 正在翻字典找提示...", expanded=True) as status:
+                last_char = last_msg[-1] 
+                with st.status("找尋提示中...", expanded=True) as status:
                     try:
-                        # 讓 AI 找一個開頭同字或同音的四字成語
                         prompt = f"請你想一個繁體中文的四字成語，這個成語的第一個字必須是「{last_char}」或者是與「{last_char}」發音相同的字。請只回傳該四字成語，不要包含任何標點符號或其他解釋。"
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
                         
                         if response and response.text:
                             ai_idiom = response.text.strip()
-                            # 確保拿到的是四字成語 (或是大於等於四個字)，以免 index out of range
                             if len(ai_idiom) >= 4:
-                                hint_char = ai_idiom[-2] # 取倒數第二個字
+                                hint_char = ai_idiom[-2] 
                                 hint_msg = f"💡 AI 提示：可以接一個成語，它的倒數第二個字是「**{hint_char}**」喔！"
                                 save_message(current_room, "Referee (AI)", hint_msg, "referee")
                                 status.update(label="提示完成！", state="complete", expanded=False)
                                 st.rerun()
                             else:
-                                st.error("AI 給的成語格式有誤，請再按一次！")
+                                st.error("提示格式錯誤，請再按一次！")
                         else:
-                            st.error("AI 腦袋卡住了，請再按一次！")
+                            st.error("AI 腦袋卡住了，請重試。")
                     except Exception as e:
-                        st.error(f"提示失敗，原因：{str(e)}")
+                        st.error(f"提示失敗：{str(e)}")
             else:
                 st.toast("目前還沒有人輸入成語喔！")
 
@@ -193,20 +227,16 @@ if 'room' in st.session_state and 'player' in st.session_state:
 
     # ==========================================
     # 局部更新魔法：只在背景更新這個對話區塊，畫面不閃爍！
-    # run_every=5 代表這個區塊每 5 秒會偷偷重新執行一次
     # ==========================================
     @st.fragment(run_every=5)
     def display_chat_room(room_name, player_name):
-        # 這裡呼叫原本的讀取歷史紀錄函數
-        chat_history = get_room_history(room_name)
-        
-        # 固定的高度框，讓對話可以在裡面滾動
+        history = get_room_history(room_name)
         chat_container = st.container(height=400)
         with chat_container:
-            if not chat_history:
+            if not history:
                 st.info("房間剛建立，趕快按下「AI 隨機出題」開始遊戲吧！")
             else:
-                for msg in chat_history:
+                for msg in history:
                     if msg["Type"] == "system":
                         st.info(msg["Text"])
                     elif msg["Type"] == "referee":
@@ -218,14 +248,10 @@ if 'room' in st.session_state and 'player' in st.session_state:
                         with st.chat_message("user", avatar=avatar):
                             st.write(f"**{msg['User']}**: {msg['Text']}")
 
-    # 呼叫這個局部更新區塊
     display_chat_room(current_room, current_player)
 
-    # --- 下方的輸入框保持不變 ---
+    # --- 下方的輸入框 ---
     user_input = st.chat_input("輸入你的成語...")
     if user_input:
         save_message(current_room, current_player, user_input, "chat")
         st.rerun()
-
-else:
-    st.info("👈 請先從左側選單輸入房間名稱與名字來進入遊戲。")
