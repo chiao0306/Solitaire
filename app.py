@@ -47,7 +47,7 @@ custom_safety_settings = [
 AVATAR_LIST = ["🥴", "🤩", "🤓", "😎", "🥸", "😇", "😉", "🫪", "👧", "🧒", "👦", "👩", "🧑", "👨", "👩‍🦰", "🧑‍🦰", "👨‍🦰", "👱‍♀️", "👱", "👱‍♂️", "👩‍🦳", "🧑‍🦳", "👨‍🦳", "👩‍🦲", "🧑‍🦲"]
 
 # ==========================================
-# 3. Google Sheets 快取與讀寫邏輯 (擴展至 6 欄)
+# 2. Google Sheets 快取與讀寫邏輯 (擴展至 6 欄)
 # ==========================================
 @st.cache_data(ttl=5)
 def get_room_history(room_name):
@@ -265,14 +265,12 @@ else:
                 st.info("趕快開始出題吧！")
             else:
                 for msg in history:
+                    # 使用 .get(..., "") 確保即使是舊的 4 欄或 5 欄資料也不會崩潰
                     msg_type = msg.get("Type", "chat")
                     msg_user = msg.get("User", "")
                     msg_text = msg.get("Text", "")
-                    
-                    # 抓取頭像，如果是舊訊息 (空字串或 None)，就給預設表情
                     msg_avatar = msg.get("Avatar")
-                    if not msg_avatar:  
-                        msg_avatar = "😎"
+                    if not msg_avatar: msg_avatar = "😎"
 
                     if msg_type == "system":
                         st.info(msg_text)
@@ -280,8 +278,6 @@ else:
                         with st.chat_message("ai"):
                             st.write(msg_text)
                     else:
-                        is_self = (msg_user == player_name)
-                        # 使用儲存在該則訊息中的頭像
                         with st.chat_message("user", avatar=msg_avatar):
                             st.write(f"**{msg_user}**: {msg_text}")
 
