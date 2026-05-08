@@ -47,15 +47,13 @@ custom_safety_settings = [
 AVATAR_LIST = ["🥴", "🤩", "🤓", "😎", "🥸", "😇", "😉", "🫪", "👧", "🧒", "👦", "👩", "🧑", "👨", "👩‍🦰", "🧑‍🦰", "👨‍🦰", "👱‍♀️", "👱", "👱‍♂️", "👩‍🦳", "🧑‍🦳", "👨‍🦳", "👩‍🦲", "🧑‍🦲"]
 
 # ==========================================
-# 2. Google Sheets 快取與讀寫邏輯 (擴展至 6 欄)
+# 2. Google Sheets 快取與讀寫邏輯
 # ==========================================
 @st.cache_data(ttl=5)
 def get_room_history(room_name):
-    """從 Google Sheets 讀取歷史對話，增加第六欄 Hint_Answer"""
     try:
         worksheet = spreadsheet.worksheet(room_name)
     except gspread.WorksheetNotFound:
-        # 新房間建立 6 欄：時間, 使用者, 內容, 類型, 頭像, 提示成語答案
         worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="6")
         worksheet.append_row(["Timestamp", "User", "Text", "Type", "Avatar", "Hint_Answer"])
         return []
@@ -64,24 +62,28 @@ def get_room_history(room_name):
     return records
 
 def save_message(room_name, user, text, msg_type="chat", avatar="", hint_answer=""):
-    """將新訊息寫入，並可選填入提示答案"""
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
     worksheet = spreadsheet.worksheet(room_name)
-    # 寫入六個欄位
     worksheet.append_row([timestamp, user, text, msg_type, avatar, hint_answer])
     st.cache_data.clear()
 
 def clear_game_data(room_name):
-    """清空指定房間除了標題以外的所有內容"""
     worksheet = spreadsheet.worksheet(room_name)
-    # 刪除第 2 列到最後一列
     rows_count = len(worksheet.get_all_values())
     if rows_count > 1:
         worksheet.delete_rows(2, rows_count)
     st.cache_data.clear()
 
+def delete_messages_from(room_name, start_row_index):
+    """刪除指定列(含)之後的所有資料"""
+    worksheet = spreadsheet.worksheet(room_name)
+    rows_count = len(worksheet.get_all_values())
+    if rows_count >= start_row_index:
+        worksheet.delete_rows(start_row_index, rows_count)
+    st.cache_data.clear()
+
 # ==========================================
-# 3. 彈窗與按鈕邏輯
+# 3. 彈窗邏輯 (包含清空房間與刪除單一對話)
 # ==========================================
 @st.dialog("⚠️ 確定要重新開始嗎？")
 def confirm_restart_dialog(room_name):
@@ -89,6 +91,17 @@ def confirm_restart_dialog(room_name):
     if st.button("確定清空，重新開始", type="primary", use_container_width=True):
         clear_game_data(room_name)
         st.success("遊戲已重置！")
+        time.sleep(1)
+        st.rerun()
+
+@st.dialog("🗑️ 刪除對話確認")
+def confirm_delete_dialog(room_name, row_index, msg_text):
+    st.warning("確定要刪除這句話以及**之後的所有對話與 AI 紀錄**嗎？")
+    st.info(f"**即將刪除：** {msg_text}")
+    
+    if st.button("✅ 確定刪除", type="primary", use_container_width=True):
+        delete_messages_from(room_name, row_index)
+        st.success("對話已刪除！")
         time.sleep(1)
         st.rerun()
 
@@ -116,7 +129,6 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
 
         st.divider()
 
-        # 角色名稱與頭像記憶邏輯
         player_options = []
         player_avatars = {}
         if room_choice != "--- 建立新房間 ---" and final_room_name:
@@ -124,14 +136,12 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
             for r in records:
                 u = str(r.get("User", ""))
                 if u and u not in ["System", "Referee (AI)"]:
-                    # 抓取該玩家最後一次使用的頭像，若無則預設為 😎
                     a = str(r.get("Avatar", ""))
                     player_avatars[u] = a if a else "😎"
             player_options = sorted(list(player_avatars.keys()))
 
         player_choice = st.selectbox("選擇身份", options=["--- 使用新名字 ---"] + player_options)
         
-        # 判斷是否為新玩家，來決定要不要顯示頭像選擇器
         if player_choice == "--- 使用新名字 ---":
             col_p, col_a = st.columns([2, 1])
             with col_p:
@@ -143,7 +153,7 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
             selected_avatar = player_avatars.get(final_player_name, "😎")
             st.success(f"歡迎回來！你的專屬頭像：{selected_avatar}")
 
-        st.write("") # 排版留白
+        st.write("")
         if st.button("🚀 確認進入", type="primary", use_container_width=True):
             if final_room_name and final_player_name:
                 st.session_state['room'] = final_room_name
@@ -196,27 +206,19 @@ else:
             else:
                 st.toast("目前尚無訊息可判斷")
 
-        # 💡 AI 提示按鈕 (兩段式提示邏輯)
         if st.button("💡 獲取 AI 提示", use_container_width=True):
-            # 取得目前的最後一筆訊息資料
             last_rec = chat_history[-1] if chat_history else None
             
-            # --- 判斷是否為「第二階段提示」：上一則訊息是 AI 提示且含有隱藏答案 ---
             if last_rec and last_rec.get("Type") == "referee" and last_rec.get("Hint_Answer"):
                 with st.status("AI 正在解析成語意思...", expanded=False):
                     try:
                         target_idiom = last_rec.get("Hint_Answer")
-                        # 提示詞要求 AI 不要講出答案
                         prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                        
-                        # 存入解釋訊息 (此則不帶 hint_answer，避免重複觸發)
                         save_message(current_room, "Referee (AI)", f"📖 意思提示：\n{response.text.strip()}", "referee")
                         st.rerun()
                     except Exception as e:
                         st.error(f"解析失敗：{e}")
-            
-            # --- 否則為「第一階段提示」：給出字提示並存下答案 ---
             else:
                 last_player_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
                 if last_player_msg:
@@ -225,11 +227,9 @@ else:
                             last_char = last_player_msg[-1]
                             prompt = f"請給出一個以「{last_char}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
                             response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                            
                             if response and response.text:
                                 ai_idiom = response.text.strip()[:4]
-                                hint_char = ai_idiom[-2] # 取倒數第二個字
-                                # 存入訊息，並將完整的成語答案存在最後一欄
+                                hint_char = ai_idiom[-2]
                                 save_message(
                                     current_room, 
                                     "Referee (AI)", 
@@ -244,7 +244,6 @@ else:
                     st.toast("目前尚無訊息可提示")
         
         st.divider()
-        # 清除遊戲按鈕
         if st.button("🧹 清除遊戲重新開始", use_container_width=True):
             confirm_restart_dialog(current_room)
 
@@ -264,8 +263,7 @@ else:
             if not history:
                 st.info("趕快開始出題吧！")
             else:
-                for msg in history:
-                    # 使用 .get(..., "") 確保即使是舊的 4 欄或 5 欄資料也不會崩潰
+                for i, msg in enumerate(history):
                     msg_type = msg.get("Type", "chat")
                     msg_user = msg.get("User", "")
                     msg_text = msg.get("Text", "")
@@ -278,8 +276,15 @@ else:
                         with st.chat_message("ai"):
                             st.write(msg_text)
                     else:
+                        is_self = (msg_user == player_name)
                         with st.chat_message("user", avatar=msg_avatar):
-                            st.write(f"**{msg_user}**: {msg_text}")
+                            if is_self:
+                                # 巧妙利用 tertiary 樣式，使文字本身成為一個不可見的按鈕
+                                if st.button(f"**{msg_user}**: {msg_text}", key=f"del_{i}", type="tertiary", help="點擊刪除此對話及後續所有紀錄"):
+                                    # i=0 對應表單第 2 列 (因第 1 列是標題)，所以傳入 i + 2
+                                    confirm_delete_dialog(room_name, i + 2, msg_text)
+                            else:
+                                st.write(f"**{msg_user}**: {msg_text}")
 
     display_chat_room(current_room, current_player)
 
