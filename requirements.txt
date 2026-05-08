@@ -1,5 +1,4 @@
 streamlit
 google-generativeai
-streamlit-autorefresh
 gspread
 oauth2client
