@@ -17,7 +17,7 @@ st.set_page_config(page_title="雙人成語接龍", page_icon="🔗", layout="ce
 # 讀取 Gemini API Key 並設定模型
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-3.1-flash-lite')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
     st.error("請確認是否已在 Streamlit Secrets 中設定好 `GEMINI_API_KEY`！")
     st.stop()
@@ -35,17 +35,26 @@ try:
     client = gspread.authorize(credentials)
     
     # ⚠️ 請確保你已經在 Google Drive 建立了一個名為 "Idiom_Game_DB" 的試算表
-    # 並且將你的 Service Account Email 加入該試算表的「編輯者」共用名單中
     spreadsheet = client.open("Idiom_Game_DB")
 except Exception as e:
-    st.error("Google Sheets 連線失敗！請確認 Secrets 設定以及試算表名稱與共用權限。")
+    st.error(f"Google Sheets 連線失敗！詳細錯誤原因：{e}")
     st.stop()
+
+# ==========================================
+# 定義 Gemini 安全設定 (允許所有字詞)
+# ==========================================
+custom_safety_settings = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+]
 
 # ==========================================
 # 2. 自動更新機制
 # ==========================================
-# 每 5000 毫秒 (5秒) 自動重新執行一次網頁，讓雙方畫面同步
-st_autorefresh(interval=5000, limit=None, key="room_sync")
+# 每 10000 毫秒 (10秒) 自動重新執行一次網頁，避開與 API 等待時間的衝突
+st_autorefresh(interval=10000, limit=None, key="room_sync")
 
 # ==========================================
 # 3. Google Sheets 快取與讀寫邏輯
@@ -108,16 +117,25 @@ if 'room' in st.session_state and 'player' in st.session_state:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🎲 AI 隨機出題", use_container_width=True):
-            with st.spinner("AI 正在思考中..."):
+            with st.status("AI 正在想題目，請稍候...", expanded=True) as status:
                 try:
-                    response = model.generate_content("請隨機給出一個常見的繁體中文成語，只需回答四字成語即可，不要其他廢話。")
-                    starting_idiom = response.text.strip()
+                    prompt = "請給出一個有趣的繁體中文四字成語，直接回傳四個字即可，不要有任何標點符號或解釋。"
+                    # 加入安全設定，解除封印
+                    response = model.generate_content(prompt, safety_settings=custom_safety_settings)
                     
-                    system_msg = f"【系統廣播】遊戲開始！初始成語為「**{starting_idiom}**」。請自由決定誰先開始！"
-                    save_message(current_room, "System", system_msg, "system")
-                    st.rerun()
+                    if response and response.text:
+                        starting_idiom = response.text.strip()
+                        if len(starting_idiom) > 10:
+                             starting_idiom = starting_idiom[:4]
+                        
+                        system_msg = f"【系統廣播】遊戲開始！初始成語為「**{starting_idiom}**」。由大家自由開始接龍！"
+                        save_message(current_room, "System", system_msg, "system")
+                        status.update(label="出題成功！", state="complete", expanded=False)
+                        st.rerun()
+                    else:
+                        st.error("AI 回傳了空的內容，請再試一次。")
                 except Exception as e:
-                    st.error("呼叫 AI 發生錯誤。")
+                    st.error(f"AI 出題失敗，原因：{str(e)}")
             
     with col2:
         if st.button("⚖️ 呼叫 AI 裁判", use_container_width=True):
@@ -125,23 +143,24 @@ if 'room' in st.session_state and 'player' in st.session_state:
             last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
             
             if last_msg:
-                with st.spinner("裁判判定中..."):
+                with st.status("裁判正在看卷中...", expanded=True) as status:
                     try:
-                        prompt = f"請判斷「{last_msg}」是否為一個標準的中文成語，並簡短解釋其意思。如果是成語請回答『✅ 裁判判定：是成語！』開頭，否則回答『❌ 裁判判定：不是成語！』開頭。請用繁體中文回答。"
-                        response = model.generate_content(prompt)
+                        prompt = f"你是成語接龍裁判。請判斷「{last_msg}」是不是一個正式的中文成語。如果是請回傳『✅ 是成語』，如果不是請回傳『❌ 不是成語』，並附上一句簡單的解釋。請用繁體中文回答。"
+                        # 加入安全設定，解除封印
+                        response = model.generate_content(prompt, safety_settings=custom_safety_settings)
                         judge_result = response.text.strip()
                         
                         save_message(current_room, "Referee (AI)", judge_result, "referee")
+                        status.update(label="判定完成！", state="complete", expanded=False)
                         st.rerun()
                     except Exception as e:
-                        st.error("呼叫 AI 發生錯誤。")
+                        st.error(f"裁判罷工了，原因：{str(e)}")
             else:
                 st.toast("目前還沒有人輸入成語喔！")
 
     st.divider()
 
     # --- 顯示歷史對話 ---
-    # 將畫面捲動區塊稍微留點空間給下方的輸入框
     chat_container = st.container(height=400)
     with chat_container:
         if not chat_history:
@@ -167,3 +186,4 @@ if 'room' in st.session_state and 'player' in st.session_state:
 
 else:
     st.info("👈 請先從左側選單輸入房間名稱與名字來進入遊戲。")
+
