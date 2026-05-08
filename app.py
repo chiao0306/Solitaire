@@ -17,7 +17,7 @@ st.set_page_config(page_title="雙人成語接龍", page_icon="🔗", layout="ce
 # 讀取 Gemini API Key 並設定模型
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-3.1-flash-lite')
 except Exception as e:
     st.error("請確認是否已在 Streamlit Secrets 中設定好 `GEMINI_API_KEY`！")
     st.stop()
