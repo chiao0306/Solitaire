@@ -114,13 +114,14 @@ if 'room' in st.session_state and 'player' in st.session_state:
     chat_history = get_room_history(current_room)
     
     # --- 控制面板 ---
-    col1, col2 = st.columns(2)
+    # 改成三個欄位，把提示按鈕加進去
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
         if st.button("🎲 AI 隨機出題", use_container_width=True):
             with st.status("AI 正在想題目，請稍候...", expanded=True) as status:
                 try:
                     prompt = "請給出一個有趣的繁體中文四字成語，直接回傳四個字即可，不要有任何標點符號或解釋。"
-                    # 加入安全設定，解除封印
                     response = model.generate_content(prompt, safety_settings=custom_safety_settings)
                     
                     if response and response.text:
@@ -146,7 +147,6 @@ if 'room' in st.session_state and 'player' in st.session_state:
                 with st.status("裁判正在看卷中...", expanded=True) as status:
                     try:
                         prompt = f"你是成語接龍裁判。請判斷「{last_msg}」是不是一個正式的中文成語。如果是請回傳『✅ 是成語』，如果不是請回傳『❌ 不是成語』，並附上一句簡單的解釋。請用繁體中文回答。"
-                        # 加入安全設定，解除封印
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
                         judge_result = response.text.strip()
                         
@@ -155,6 +155,37 @@ if 'room' in st.session_state and 'player' in st.session_state:
                         st.rerun()
                     except Exception as e:
                         st.error(f"裁判罷工了，原因：{str(e)}")
+            else:
+                st.toast("目前還沒有人輸入成語喔！")
+
+    with col3:
+        if st.button("💡 AI 給個提示", use_container_width=True):
+            # 抓取最後一句玩家發言
+            last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
+            
+            if last_msg:
+                last_char = last_msg[-1] # 取出最後一個字
+                with st.status("AI 正在翻字典找提示...", expanded=True) as status:
+                    try:
+                        # 讓 AI 找一個開頭同字或同音的四字成語
+                        prompt = f"請你想一個繁體中文的四字成語，這個成語的第一個字必須是「{last_char}」或者是與「{last_char}」發音相同的字。請只回傳該四字成語，不要包含任何標點符號或其他解釋。"
+                        response = model.generate_content(prompt, safety_settings=custom_safety_settings)
+                        
+                        if response and response.text:
+                            ai_idiom = response.text.strip()
+                            # 確保拿到的是四字成語 (或是大於等於四個字)，以免 index out of range
+                            if len(ai_idiom) >= 4:
+                                hint_char = ai_idiom[-2] # 取倒數第二個字
+                                hint_msg = f"💡 AI 提示：可以接一個成語，它的倒數第二個字是「**{hint_char}**」喔！"
+                                save_message(current_room, "Referee (AI)", hint_msg, "referee")
+                                status.update(label="提示完成！", state="complete", expanded=False)
+                                st.rerun()
+                            else:
+                                st.error("AI 給的成語格式有誤，請再按一次！")
+                        else:
+                            st.error("AI 腦袋卡住了，請再按一次！")
+                    except Exception as e:
+                        st.error(f"提示失敗，原因：{str(e)}")
             else:
                 st.toast("目前還沒有人輸入成語喔！")
 
