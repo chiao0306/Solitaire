@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import gspread
 from google.oauth2.service_account import Credentials
-#from streamlit_autorefresh import st_autorefresh
+# from streamlit_autorefresh import st_autorefresh
 import random
 import time
 
@@ -54,7 +54,7 @@ custom_safety_settings = [
 # 2. 自動更新機制
 # ==========================================
 # 每 10000 毫秒 (10秒) 自動重新執行一次網頁，避開與 API 等待時間的衝突
-#st_autorefresh(interval=10000, limit=None, key="room_sync")
+# st_autorefresh(interval=10000, limit=None, key="room_sync")
 
 # ==========================================
 # 3. Google Sheets 快取與讀寫邏輯
@@ -160,42 +160,41 @@ if 'room' in st.session_state and 'player' in st.session_state:
 
     st.divider()
 
-# ==========================================
-# 局部更新魔法：只在背景更新這個對話區塊，畫面不閃爍！
-# run_every=5 代表這個區塊每 5 秒會偷偷重新執行一次
-# ==========================================
-@st.fragment(run_every=5)
-def display_chat_room(room_name, player_name):
-    # 這裡呼叫原本的讀取歷史紀錄函數
-    chat_history = get_room_history(room_name)
-    
-    # 固定的高度框，讓對話可以在裡面滾動
-    chat_container = st.container(height=400)
-    with chat_container:
-        if not chat_history:
-            st.info("房間剛建立，趕快按下「AI 隨機出題」開始遊戲吧！")
-        else:
-            for msg in chat_history:
-                if msg["Type"] == "system":
-                    st.info(msg["Text"])
-                elif msg["Type"] == "referee":
-                    with st.chat_message("ai"):
-                        st.write(msg["Text"])
-                else:
-                    is_self = (msg["User"] == player_name)
-                    avatar = "😎" if is_self else "👩"
-                    with st.chat_message("user", avatar=avatar):
-                        st.write(f"**{msg['User']}**: {msg['Text']}")
+    # ==========================================
+    # 局部更新魔法：只在背景更新這個對話區塊，畫面不閃爍！
+    # run_every=5 代表這個區塊每 5 秒會偷偷重新執行一次
+    # ==========================================
+    @st.fragment(run_every=5)
+    def display_chat_room(room_name, player_name):
+        # 這裡呼叫原本的讀取歷史紀錄函數
+        chat_history = get_room_history(room_name)
+        
+        # 固定的高度框，讓對話可以在裡面滾動
+        chat_container = st.container(height=400)
+        with chat_container:
+            if not chat_history:
+                st.info("房間剛建立，趕快按下「AI 隨機出題」開始遊戲吧！")
+            else:
+                for msg in chat_history:
+                    if msg["Type"] == "system":
+                        st.info(msg["Text"])
+                    elif msg["Type"] == "referee":
+                        with st.chat_message("ai"):
+                            st.write(msg["Text"])
+                    else:
+                        is_self = (msg["User"] == player_name)
+                        avatar = "😎" if is_self else "👩"
+                        with st.chat_message("user", avatar=avatar):
+                            st.write(f"**{msg['User']}**: {msg['Text']}")
 
-# 呼叫這個局部更新區塊
-display_chat_room(current_room, current_player)
+    # 呼叫這個局部更新區塊
+    display_chat_room(current_room, current_player)
 
-# --- 下方的輸入框保持不變 ---
-user_input = st.chat_input("輸入你的成語...")
-if user_input:
-    save_message(current_room, current_player, user_input, "chat")
-    st.rerun()
+    # --- 下方的輸入框保持不變 ---
+    user_input = st.chat_input("輸入你的成語...")
+    if user_input:
+        save_message(current_room, current_player, user_input, "chat")
+        st.rerun()
 
 else:
     st.info("👈 請先從左側選單輸入房間名稱與名字來進入遊戲。")
-
