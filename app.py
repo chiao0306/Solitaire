@@ -1,6 +1,5 @@
 import streamlit as st
 import google.generativeai as genai
-import gspread
 from google.oauth2.service_account import Credentials
 import random
 import time
@@ -263,7 +262,7 @@ else:
     # ==========================================
     # 6. 聊天室主畫面 (局部更新)
     # ==========================================
-    @st.fragment(run_every=5)
+    @st.fragment(run_every=2)
     def display_chat_room(room_name, player_name):
         history = get_room_history(room_name)
         chat_container = st.container(height=500)
@@ -289,8 +288,7 @@ else:
                             if is_self:
                                 # 巧妙利用 tertiary 樣式，使文字本身成為一個不可見的按鈕
                                 if st.button(f"**{msg_user}**: {msg_text}", key=f"del_{i}", type="tertiary", help="點擊刪除此對話及後續所有紀錄"):
-                                    # i=0 對應表單第 2 列 (因第 1 列是標題)，所以傳入 i + 2
-                                    confirm_delete_dialog(room_name, i + 2, msg_text)
+                                    confirm_delete_dialog(room_name, msg.get("id"), msg_text)
                             else:
                                 st.write(f"**{msg_user}**: {msg_text}")
 
