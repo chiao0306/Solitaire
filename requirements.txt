@@ -1,4 +1,4 @@
 streamlit
 google-generativeai
-gspread
 oauth2client
+supabase==2.3.0
