@@ -1,8 +1,8 @@
 import streamlit as st
 import google.generativeai as genai
-from google.oauth2.service_account import Credentials
 import random
 import time
+from supabase import create_client, Client
 
 # ==========================================
 # 0. 頁面基本設定
@@ -10,28 +10,13 @@ import time
 st.set_page_config(page_title="成語接龍", page_icon="🔗", layout="centered")
 
 # ==========================================
-# 1. 初始化設定 (Gemini & Google Sheets)
+# 1. 初始化設定 (Gemini)
 # ==========================================
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-3.1-flash-lite')
 except Exception as e:
     st.error("請確認是否已在 Streamlit Secrets 中設定好 `GEMINI_API_KEY`！")
-    st.stop()
-
-try:
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    credentials = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scopes
-    )
-    client = gspread.authorize(credentials)
-    spreadsheet = client.open("Idiom_Game_DB")
-except Exception as e:
-    st.error(f"Google Sheets 連線失敗！詳細錯誤原因：{e}")
     st.stop()
 
 # 定義 Gemini 安全設定
@@ -45,7 +30,6 @@ custom_safety_settings = [
 # 表情貼清單
 AVATAR_LIST = ["🥴", "🤩", "🤓", "😎", "🥸", "😇", "😉", "🫪", "👧", "🧒", "👦", "👩", "🧑", "👨", "👩‍🦰", "🧑‍🦰", "👨‍🦰", "👱‍♀️", "👱", "👱‍♂️", "👩‍🦳", "🧑‍🦳", "👨‍🦳", "👩‍🦲", "🧑‍🦲"]
 
-from supabase import create_client, Client
 
 # ==========================================
 # 2. Supabase 連線與讀寫邏輯
@@ -122,9 +106,9 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
     with st.container(border=True):
         st.subheader("🚪 進入遊戲大廳")
         
+        # 修正 1：改用 Supabase 抓取所有房間
         try:
-            all_worksheets = spreadsheet.worksheets()
-            room_options = [ws.title for ws in all_worksheets]
+            room_options = get_all_rooms()
         except Exception:
             room_options = []
         
@@ -141,9 +125,10 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
         if room_choice != "--- 建立新房間 ---" and final_room_name:
             records = get_room_history(final_room_name)
             for r in records:
-                u = str(r.get("User", ""))
+                # 修正 2：資料庫欄位名稱改為小寫 user_name 與 avatar
+                u = str(r.get("user_name", ""))
                 if u and u not in ["System", "Referee (AI)"]:
-                    a = str(r.get("Avatar", ""))
+                    a = str(r.get("avatar", ""))
                     player_avatars[u] = a if a else "😎"
             player_options = sorted(list(player_avatars.keys()))
 
@@ -166,7 +151,6 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
                 st.session_state['room'] = final_room_name
                 st.session_state['player'] = final_player_name
                 st.session_state['avatar'] = selected_avatar
-                st.cache_data.clear()
                 st.rerun()
             else:
                 st.warning("請完整填寫房間與名字！")
@@ -200,7 +184,8 @@ else:
                     st.error(f"出題失敗：{e}")
 
         if st.button("⚖️ AI 裁判判斷", use_container_width=True):
-            last_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
+            # 修正 3：欄位名稱改為小寫 text 與 type
+            last_msg = next((m['text'] for m in reversed(chat_history) if m['type'] == 'chat'), None)
             if last_msg:
                 with st.status("裁判審核中...", expanded=False):
                     try:
@@ -216,10 +201,11 @@ else:
         if st.button("💡 獲取 AI 提示", use_container_width=True):
             last_rec = chat_history[-1] if chat_history else None
             
-            if last_rec and last_rec.get("Type") == "referee" and last_rec.get("Hint_Answer"):
+            # 修正 4：欄位名稱改為小寫 type 與 hint_answer
+            if last_rec and last_rec.get("type") == "referee" and last_rec.get("hint_answer"):
                 with st.status("AI 正在解析成語意思...", expanded=False):
                     try:
-                        target_idiom = last_rec.get("Hint_Answer")
+                        target_idiom = last_rec.get("hint_answer")
                         prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
                         save_message(current_room, "Referee (AI)", f"📖 意思提示：\n{response.text.strip()}", "referee")
@@ -227,7 +213,8 @@ else:
                     except Exception as e:
                         st.error(f"解析失敗：{e}")
             else:
-                last_player_msg = next((m['Text'] for m in reversed(chat_history) if m['Type'] == 'chat'), None)
+                # 修正 5：欄位名稱改為小寫 text 與 type
+                last_player_msg = next((m['text'] for m in reversed(chat_history) if m['type'] == 'chat'), None)
                 if last_player_msg:
                     with st.status("翻閱典籍中...", expanded=False):
                         try:
@@ -271,10 +258,11 @@ else:
                 st.info("趕快開始出題吧！")
             else:
                 for i, msg in enumerate(history):
-                    msg_type = msg.get("Type", "chat")
-                    msg_user = msg.get("User", "")
-                    msg_text = msg.get("Text", "")
-                    msg_avatar = msg.get("Avatar")
+                    # 修正 6：欄位名稱全面改為小寫
+                    msg_type = msg.get("type", "chat")
+                    msg_user = msg.get("user_name", "")
+                    msg_text = msg.get("text", "")
+                    msg_avatar = msg.get("avatar")
                     if not msg_avatar: msg_avatar = "😎"
 
                     if msg_type == "system":
@@ -286,7 +274,6 @@ else:
                         is_self = (msg_user == player_name)
                         with st.chat_message("user", avatar=msg_avatar):
                             if is_self:
-                                # 巧妙利用 tertiary 樣式，使文字本身成為一個不可見的按鈕
                                 if st.button(f"**{msg_user}**: {msg_text}", key=f"del_{i}", type="tertiary", help="點擊刪除此對話及後續所有紀錄"):
                                     confirm_delete_dialog(room_name, msg.get("id"), msg_text)
                             else:
