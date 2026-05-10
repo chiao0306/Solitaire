@@ -46,41 +46,49 @@ custom_safety_settings = [
 # 表情貼清單
 AVATAR_LIST = ["🥴", "🤩", "🤓", "😎", "🥸", "😇", "😉", "🫪", "👧", "🧒", "👦", "👩", "🧑", "👨", "👩‍🦰", "🧑‍🦰", "👨‍🦰", "👱‍♀️", "👱", "👱‍♂️", "👩‍🦳", "🧑‍🦳", "👨‍🦳", "👩‍🦲", "🧑‍🦲"]
 
+from supabase import create_client, Client
+
 # ==========================================
-# 2. Google Sheets 快取與讀寫邏輯
+# 2. Supabase 連線與讀寫邏輯
 # ==========================================
-@st.cache_data(ttl=5)
+@st.cache_resource
+def init_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+supabase = init_connection()
+
 def get_room_history(room_name):
-    try:
-        worksheet = spreadsheet.worksheet(room_name)
-    except gspread.WorksheetNotFound:
-        worksheet = spreadsheet.add_worksheet(title=room_name, rows="1000", cols="6")
-        worksheet.append_row(["Timestamp", "User", "Text", "Type", "Avatar", "Hint_Answer"])
-        return []
-    
-    records = worksheet.get_all_records()
-    return records
+    # 讀取指定房間的歷史對話，並按時間排序
+    response = supabase.table("chat_messages").select("*").eq("room_name", room_name).order("id", desc=False).execute()
+    return response.data
 
 def save_message(room_name, user, text, msg_type="chat", avatar="", hint_answer=""):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    worksheet = spreadsheet.worksheet(room_name)
-    worksheet.append_row([timestamp, user, text, msg_type, avatar, hint_answer])
-    st.cache_data.clear()
+    # 寫入新對話
+    data = {
+        "room_name": room_name,
+        "user_name": user,
+        "text": text,
+        "type": msg_type,
+        "avatar": avatar,
+        "hint_answer": hint_answer
+    }
+    supabase.table("chat_messages").insert(data).execute()
 
 def clear_game_data(room_name):
-    worksheet = spreadsheet.worksheet(room_name)
-    rows_count = len(worksheet.get_all_values())
-    if rows_count > 1:
-        worksheet.delete_rows(2, rows_count)
-    st.cache_data.clear()
+    # 刪除特定房間的所有對話
+    supabase.table("chat_messages").delete().eq("room_name", room_name).execute()
 
-def delete_messages_from(room_name, start_row_index):
-    """刪除指定列(含)之後的所有資料"""
-    worksheet = spreadsheet.worksheet(room_name)
-    rows_count = len(worksheet.get_all_values())
-    if rows_count >= start_row_index:
-        worksheet.delete_rows(start_row_index, rows_count)
-    st.cache_data.clear()
+def delete_messages_from(room_name, msg_id):
+    # 刪除大於等於指定 ID 的對話（連同後續 AI 紀錄一起刪）
+    supabase.table("chat_messages").delete().eq("room_name", room_name).gte("id", msg_id).execute()
+
+def get_all_rooms():
+    # 取得目前所有建立過的房間清單
+    response = supabase.table("chat_messages").select("room_name").execute()
+    # 過濾出不重複的房間名稱
+    return list(set([row["room_name"] for row in response.data]))
 
 # ==========================================
 # 3. 彈窗邏輯 (包含清空房間與刪除單一對話)
