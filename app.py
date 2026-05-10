@@ -2,7 +2,8 @@ import streamlit as st
 import google.generativeai as genai
 import random
 import time
-from supabase import create_client, Client
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 # ==========================================
 # 0. 頁面基本設定
@@ -19,7 +20,6 @@ except Exception as e:
     st.error("請確認是否已在 Streamlit Secrets 中設定好 `GEMINI_API_KEY`！")
     st.stop()
 
-# 定義 Gemini 安全設定
 custom_safety_settings = [
     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -27,54 +27,73 @@ custom_safety_settings = [
     {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
 ]
 
-# 表情貼清單
 AVATAR_LIST = ["🥴", "🤩", "🤓", "😎", "🥸", "😇", "😉", "🫪", "👧", "🧒", "👦", "👩", "🧑", "👨", "👩‍🦰", "🧑‍🦰", "👨‍🦰", "👱‍♀️", "👱", "👱‍♂️", "👩‍🦳", "🧑‍🦳", "👨‍🦳", "👩‍🦲", "🧑‍🦲"]
 
-
 # ==========================================
-# 2. Supabase 連線與讀寫邏輯
+# 2. Firebase 連線與讀寫邏輯
 # ==========================================
-@st.cache_resource
-def init_connection():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+# 確保 Streamlit 重新執行時不會重複初始化 Firebase
+if not firebase_admin._apps:
+    try:
+        cred_dict = dict(st.secrets["firebase_key"])
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+    except Exception as e:
+        st.error(f"Firebase 初始化失敗，請檢查 Secrets 設定：{e}")
+        st.stop()
 
-supabase = init_connection()
+db = firestore.client()
+# 我們將所有對話存放在這個集合 (Collection) 裡
+CHAT_COLLECTION = "chat_messages"
 
 def get_room_history(room_name):
-    # 讀取指定房間的歷史對話，並按時間排序
-    response = supabase.table("chat_messages").select("*").eq("room_name", room_name).order("id", desc=False).execute()
-    return response.data
+    # 根據房間名稱查詢，並依照時間戳記排序
+    docs = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name).order_by("timestamp").stream()
+    history = []
+    for doc in docs:
+        data = doc.to_dict()
+        data["id"] = doc.id  # 把 Firebase 產生的隨機文件 ID 存起來
+        history.append(data)
+    return history
 
 def save_message(room_name, user, text, msg_type="chat", avatar="", hint_answer=""):
-    # 寫入新對話
     data = {
         "room_name": room_name,
         "user_name": user,
         "text": text,
         "type": msg_type,
         "avatar": avatar,
-        "hint_answer": hint_answer
+        "hint_answer": hint_answer,
+        "timestamp": firestore.SERVER_TIMESTAMP # 使用 Firebase 伺服器時間
     }
-    supabase.table("chat_messages").insert(data).execute()
+    db.collection(CHAT_COLLECTION).add(data)
 
 def clear_game_data(room_name):
-    # 刪除特定房間的所有對話
-    supabase.table("chat_messages").delete().eq("room_name", room_name).execute()
+    # 找出該房間所有對話並批次刪除
+    docs = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name).stream()
+    batch = db.batch()
+    for doc in docs:
+        batch.delete(doc.reference)
+    batch.commit()
 
-def delete_messages_from(room_name, msg_id):
-    # 刪除大於等於指定 ID 的對話（連同後續 AI 紀錄一起刪）
-    supabase.table("chat_messages").delete().eq("room_name", room_name).gte("id", msg_id).execute()
+def delete_messages_from(room_name, target_timestamp):
+    # 利用時間戳記，刪除大於等於該時間的所有對話
+    docs = db.collection(CHAT_COLLECTION)\
+             .where("room_name", "==", room_name)\
+             .where("timestamp", ">=", target_timestamp)\
+             .stream()
+    batch = db.batch()
+    for doc in docs:
+        batch.delete(doc.reference)
+    batch.commit()
 
 def get_all_rooms():
-    # 取得目前所有建立過的房間清單
-    response = supabase.table("chat_messages").select("room_name").execute()
-    # 過濾出不重複的房間名稱
-    return list(set([row["room_name"] for row in response.data]))
+    # Firebase 沒有直接撈出「不重複值」的語法，我們抓取所有房間名稱來過濾
+    docs = db.collection(CHAT_COLLECTION).select(["room_name"]).stream()
+    return list(set([doc.to_dict().get("room_name") for doc in docs if doc.to_dict().get("room_name")]))
 
 # ==========================================
-# 3. 彈窗邏輯 (包含清空房間與刪除單一對話)
+# 3. 彈窗邏輯
 # ==========================================
 @st.dialog("⚠️ 確定要重新開始嗎？")
 def confirm_restart_dialog(room_name):
@@ -86,12 +105,12 @@ def confirm_restart_dialog(room_name):
         st.rerun()
 
 @st.dialog("🗑️ 刪除對話確認")
-def confirm_delete_dialog(room_name, row_index, msg_text):
+def confirm_delete_dialog(room_name, msg_text, timestamp):
     st.warning("確定要刪除這句話以及**之後的所有對話與 AI 紀錄**嗎？")
     st.info(f"**即將刪除：** {msg_text}")
     
     if st.button("✅ 確定刪除", type="primary", use_container_width=True):
-        delete_messages_from(room_name, row_index)
+        delete_messages_from(room_name, timestamp)
         st.success("對話已刪除！")
         time.sleep(1)
         st.rerun()
@@ -101,12 +120,10 @@ def confirm_delete_dialog(room_name, row_index, msg_text):
 # ==========================================
 st.title("成語接龍🐉")
 
-# --- 狀態一：登入大廳 ---
 if 'room' not in st.session_state or 'player' not in st.session_state:
     with st.container(border=True):
         st.subheader("🚪 進入遊戲大廳")
         
-        # 修正 1：改用 Supabase 抓取所有房間
         try:
             room_options = get_all_rooms()
         except Exception:
@@ -125,7 +142,6 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
         if room_choice != "--- 建立新房間 ---" and final_room_name:
             records = get_room_history(final_room_name)
             for r in records:
-                # 修正 2：資料庫欄位名稱改為小寫 user_name 與 avatar
                 u = str(r.get("user_name", ""))
                 if u and u not in ["System", "Referee (AI)"]:
                     a = str(r.get("avatar", ""))
@@ -155,7 +171,6 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
             else:
                 st.warning("請完整填寫房間與名字！")
 
-# --- 狀態二：遊戲室 ---
 else:
     current_room = st.session_state['room']
     current_player = st.session_state['player']
@@ -184,7 +199,6 @@ else:
                     st.error(f"出題失敗：{e}")
 
         if st.button("⚖️ AI 裁判判斷", use_container_width=True):
-            # 修正 3：欄位名稱改為小寫 text 與 type
             last_msg = next((m['text'] for m in reversed(chat_history) if m['type'] == 'chat'), None)
             if last_msg:
                 with st.status("裁判審核中...", expanded=False):
@@ -201,7 +215,6 @@ else:
         if st.button("💡 獲取 AI 提示", use_container_width=True):
             last_rec = chat_history[-1] if chat_history else None
             
-            # 修正 4：欄位名稱改為小寫 type 與 hint_answer
             if last_rec and last_rec.get("type") == "referee" and last_rec.get("hint_answer"):
                 with st.status("AI 正在解析成語意思...", expanded=False):
                     try:
@@ -213,7 +226,6 @@ else:
                     except Exception as e:
                         st.error(f"解析失敗：{e}")
             else:
-                # 修正 5：欄位名稱改為小寫 text 與 type
                 last_player_msg = next((m['text'] for m in reversed(chat_history) if m['type'] == 'chat'), None)
                 if last_player_msg:
                     with st.status("翻閱典籍中...", expanded=False):
@@ -257,8 +269,7 @@ else:
             if not history:
                 st.info("趕快開始出題吧！")
             else:
-                for i, msg in enumerate(history):
-                    # 修正 6：欄位名稱全面改為小寫
+                for msg in history:
                     msg_type = msg.get("type", "chat")
                     msg_user = msg.get("user_name", "")
                     msg_text = msg.get("text", "")
@@ -274,8 +285,9 @@ else:
                         is_self = (msg_user == player_name)
                         with st.chat_message("user", avatar=msg_avatar):
                             if is_self:
-                                if st.button(f"**{msg_user}**: {msg_text}", key=f"del_{i}", type="tertiary", help="點擊刪除此對話及後續所有紀錄"):
-                                    confirm_delete_dialog(room_name, msg.get("id"), msg_text)
+                                # 傳入 msg.get('timestamp') 作為刪除條件
+                                if st.button(f"**{msg_user}**: {msg_text}", key=f"del_{msg.get('id')}", type="tertiary", help="點擊刪除此對話及後續所有紀錄"):
+                                    confirm_delete_dialog(room_name, msg_text, msg.get("timestamp"))
                             else:
                                 st.write(f"**{msg_user}**: {msg_text}")
 
