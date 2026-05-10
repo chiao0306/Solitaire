@@ -1,4 +1,4 @@
 streamlit
 google-generativeai
 oauth2client
-supabase
+firebase-admin
