@@ -382,21 +382,6 @@ else:
         st.write(f"📍 房間：{current_room}")
         st.write(f"👤 身份：{current_player} {current_avatar}")
         
-        # --- 投降按鈕與結果顯示 ---
-        # 💡 從 state 字典中讀取是否結束與輸家資訊
-        if not state["is_game_over"]:
-            if st.button("🏳️ 我想不出來了 (投降)", use_container_width=True):
-                # 這裡記得也要帶入頭像
-                save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over", current_avatar)
-                st.rerun()
-        else:
-            # 💡 如果遊戲結束，判斷是有人投降還是被扣到 0 分
-            if state["loser"]:
-                st.error(f"💀 遊戲結算：**{state['loser']}** 分數扣光出局啦！")
-            else:
-                # 這是處理原本投降的狀況
-                st.error("🏁 遊戲已結算！")
-            
         st.divider()
         
         if st.button("🎲 AI 隨機出題", use_container_width=True):
@@ -427,6 +412,9 @@ else:
                             st.toast("📉 完蛋了！裁判抓包，扣 10 分！", icon="💥")
                         else:
                             st.toast("✅ 裁判驗證通過！", icon="⚖️")
+                        
+                        # 👇 加上這行：強迫停頓 2 秒，讓泡泡顯示出來
+                        time.sleep(2)    
                             
                         st.rerun()
                     except Exception as e:
@@ -470,6 +458,22 @@ else:
                     st.toast("目前尚無訊息可提示")
                     
         st.divider()
+        
+        # --- 投降按鈕與結果顯示 ---
+        # 💡 從 state 字典中讀取是否結束與輸家資訊
+        if not state["is_game_over"]:
+            if st.button("🏳️ 我想不出來了 (投降)", use_container_width=True):
+                # 這裡記得也要帶入頭像
+                save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over", current_avatar)
+                st.rerun()
+        else:
+            # 💡 如果遊戲結束，判斷是有人投降還是被扣到 0 分
+            if state["loser"]:
+                st.error(f"💀 遊戲結算：**{state['loser']}** 分數扣光出局啦！")
+            else:
+                # 這是處理原本投降的狀況
+                st.error("🏁 遊戲已結算！")
+        
         if st.button("🧹 清除遊戲重新開始", use_container_width=True):
             confirm_restart_dialog(current_room)
 
