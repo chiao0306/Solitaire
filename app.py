@@ -391,7 +391,7 @@ else:
 
     display_chat_room(current_room, current_player)
 
-        user_input = st.chat_input("輸入你的成語...")
+    user_input = st.chat_input("輸入你的成語...")
     if user_input:
         # 1. 先找出歷史紀錄裡，最後一個由玩家或系統發出的「有效成語」
         last_valid_msg = None
