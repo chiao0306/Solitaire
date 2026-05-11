@@ -56,7 +56,8 @@ def get_room_history(room_name):
         history.append(data)
     return history
 
-def save_message(room_name, user, text, msg_type="chat", avatar="", hint_answer=""):
+# 💡 增加一個 requested_by 參數
+def save_message(room_name, user, text, msg_type="chat", avatar="", hint_answer="", requested_by=None):
     data = {
         "room_name": room_name,
         "user_name": user,
@@ -64,7 +65,8 @@ def save_message(room_name, user, text, msg_type="chat", avatar="", hint_answer=
         "type": msg_type,
         "avatar": avatar,
         "hint_answer": hint_answer,
-        "timestamp": firestore.SERVER_TIMESTAMP # 使用 Firebase 伺服器時間
+        "requested_by": requested_by, # 💡 存入是誰請求的
+        "timestamp": firestore.SERVER_TIMESTAMP
     }
     db.collection(CHAT_COLLECTION).add(data)
 
@@ -137,7 +139,7 @@ def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
     return bool(set(last_char_pinyins).intersection(set(first_char_pinyins)))
 
 def get_game_state(history):
-    """終極狀態引擎：支援 AI 退件不換人、求生進度時光倒流"""
+    """終極狀態引擎：支援 AI 提示扣分、次數統計與退件機制"""
     STARTING_HP = 50  
     
     scores = {}
@@ -152,8 +154,11 @@ def get_game_state(history):
     
     last_chat_user = None  
     players_order = []
+    
+    # 💡 新增：用來追蹤當前回合「每個人」用了幾次提示
+    # 格式：{ "玩家名": 次數 }
+    current_round_hints = {}
 
-    # 💡 新增：用來記錄上一步的求生狀態，以便被退件時「時光倒流」
     last_chat_prev_sos_user = None
     last_chat_prev_sos_count = 0
 
@@ -172,8 +177,7 @@ def get_game_state(history):
             valid_idiom = None
             pending_idiom = None
             rejected = False
-            sos_user = None
-            sos_count = 0
+            current_round_hints.clear()
 
         if user and user not in ["System", "Referee (AI)"]:
             if user not in scores:
@@ -190,6 +194,7 @@ def get_game_state(history):
             rejected = False
             sos_user = None
             sos_count = 0
+            current_round_hints.clear() # 💡 換題了，提示次數歸零
 
         elif m_type == "sos_start":
             sos_user = user
@@ -202,10 +207,11 @@ def get_game_state(history):
             pending_idiom = text
             rejected = False
             last_chat_user = user
-            
-            # 💡 記錄說話前的求生狀態
             last_chat_prev_sos_user = sos_user
             last_chat_prev_sos_count = sos_count
+            
+            # 💡 只要有人成功接龍，提示次數就重置
+            current_round_hints.clear() 
             
             if sos_user == user:
                 sos_count += 1
@@ -219,18 +225,29 @@ def get_game_state(history):
                 sos_count = 0
                 
         elif m_type == "referee":
+            # 1. 判錯扣 20 分
             if "❌" in text and "不是成語" in text:
                 rejected = True
                 if last_chat_user and last_chat_user in scores:
                     scores[last_chat_user] -= 20
-                    
-                    # 💡 核心機制：被退件時，還原上一步的求生狀態！
                     sos_user = last_chat_prev_sos_user
                     sos_count = last_chat_prev_sos_count
-                    
                     if scores[last_chat_user] <= 0:
                         is_game_over = True
                         loser = last_chat_user
+            
+            # 2. 💡 AI 提示扣 5 分邏輯
+            if "💡" in text:
+                # 我們從 save_message 帶入的 requested_by 欄位來扣分
+                req_user = msg.get("requested_by")
+                if req_user and req_user in scores:
+                    scores[req_user] -= 5
+                    # 統計次數
+                    current_round_hints[req_user] = current_round_hints.get(req_user, 0) + 1
+                    # 檢查是否因為買提示買到破產
+                    if scores[req_user] <= 0:
+                        is_game_over = True
+                        loser = req_user
 
     target_idiom = valid_idiom if rejected else pending_idiom
 
@@ -258,7 +275,8 @@ def get_game_state(history):
         "last_idiom": target_idiom, 
         "players_order": players_order,
         "current_turn": current_turn,
-        "rejected": rejected
+        "rejected": rejected,
+        "round_hints": current_round_hints # 💡 把提示次數傳出去給 UI 用
     }
 
 # ==========================================
@@ -455,43 +473,6 @@ else:
                         st.rerun()
                     except Exception as e:
                         st.error(f"判斷失敗：{e}")
-
-        if st.button("💡 獲取 AI 提示", use_container_width=True):
-            last_rec = chat_history[-1] if chat_history else None
-            
-            if last_rec and last_rec.get("type") == "referee" and last_rec.get("hint_answer"):
-                with st.status("AI 正在解析成語意思...", expanded=False):
-                    try:
-                        target_idiom = last_rec.get("hint_answer")
-                        prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
-                        response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                        save_message(current_room, "Referee (AI)", f"📖 意思提示：\n{response.text.strip()}", "referee")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"解析失敗：{e}")
-            else:
-                last_player_msg = next((m['text'] for m in reversed(chat_history) if m['type'] == 'chat'), None)
-                if last_player_msg:
-                    with st.status("翻閱典籍中...", expanded=False):
-                        try:
-                            last_char = last_player_msg[-1]
-                            prompt = f"請給出一個以「{last_char}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
-                            response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                            if response and response.text:
-                                ai_idiom = response.text.strip()[:4]
-                                hint_char = ai_idiom[-2]
-                                save_message(
-                                    current_room, 
-                                    "Referee (AI)", 
-                                    f"💡 字提示：下一句的倒數第二個字可以是「**{hint_char}**」", 
-                                    "referee", 
-                                    hint_answer=ai_idiom
-                                )
-                                st.rerun()
-                        except Exception as e:
-                            st.error(f"提示失敗：{e}")
-                else:
-                    st.toast("目前尚無訊息可提示")
                     
         st.divider()
         
@@ -616,11 +597,10 @@ else:
     # 獲取最新狀態
     state = get_game_state(chat_history)
     
-    # --- 1. 迷你輪次顯示器 (結合專屬求生按鈕) ---
+    # --- 1. 迷你輪次顯示器 ---
     if state["is_game_over"]:
         st.markdown("<div style='text-align: center; color: red; font-size: 13px; margin: 5px 0;'>🏁 遊戲已結算</div>", unsafe_allow_html=True)
     elif state["current_turn"]:
-        
         sos_suffix = ""
         if state["sos_user"] == state["current_turn"]:
             remaining = 3 - state["sos_count"]
@@ -632,14 +612,60 @@ else:
             else:
                 st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 13px; margin: 5px 0;'>🟢 現在輪到你發言！{sos_suffix}</div>", unsafe_allow_html=True)
             
-            # 💡 全新專屬位置：只有輪到你，且沒人在求生時，才會在輸入框上方出現求生按鈕！
-            if not state["sos_user"] and state["last_idiom"]:
-                with st.popover("🆘 想不到詞了？點此發動求生", use_container_width=True):
-                    st.info("⚠️ 將發動換聲調求生，必須連續接出 3 個成語才能過關！")
-                    if st.button("🚨 確定發動", type="primary", use_container_width=True):
-                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
-                        st.rerun()
+            # 💡 核心改動：專屬操作列 (只有輪到你時出現)
+            if state["last_idiom"]:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # --- 🆘 求生按鈕 ---
+                    if not state["sos_user"]:
+                        with st.popover("🆘 發動求生", use_container_width=True):
+                            st.info("⚠️ 必須連續接出 3 個成語才能過關！")
+                            if st.button("🚨 確定發動", type="primary", key="btn_sos_final", use_container_width=True):
+                                save_message(current_room, current_player, f"發動了「換聲調求生」！", "sos_start", current_avatar)
+                                st.rerun()
+                    else:
+                        st.button("🚨 連擊進行中", disabled=True, use_container_width=True)
 
+                with col2:
+                    # --- 💡 AI 提示按鈕邏輯 ---
+                    user_hint_count = state["round_hints"].get(current_player, 0)
+                    my_score = state["scores"].get(current_player, 0)
+                    
+                    if user_hint_count >= 2:
+                        st.button("🚫 提示次數已滿", disabled=True, use_container_width=True)
+                    elif my_score <= 5:
+                        st.button("🚫 分數不足 5 分", disabled=True, use_container_width=True)
+                    else:
+                        # 依照次數顯示標題
+                        hint_label = "💡 第一次 AI 提示" if user_hint_count == 0 else "💡 第二次 AI 提示"
+                        
+                        with st.popover(hint_label, use_container_width=True):
+                            if user_hint_count == 0:
+                                st.warning("第一次提示：將顯示「第三個字」是什麼。")
+                                st.caption("💰 消耗：5 分")
+                                if st.button("確認獲取提示 (1/2)", key="hint_1", use_container_width=True):
+                                    with st.spinner("查閱字典中..."):
+                                        last_char = state["last_idiom"][-1]
+                                        prompt = f"請給出一個以「{last_char}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身。"
+                                        res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+                                        ans = res.text.strip()[:4]
+                                        save_message(current_room, "Referee (AI)", f"💡 第一次提示：下一句的倒數第二個字可以是「**{ans[-2]}**」", "referee", requested_by=current_player)
+                                        st.toast("已扣除 5 分！", icon="💰")
+                                        time.sleep(1)
+                                        st.rerun()
+                            else:
+                                st.warning("第二次提示：將顯示成語的意思。")
+                                st.caption("💰 消耗：5 分")
+                                if st.button("確認獲取提示 (2/2)", key="hint_2", use_container_width=True):
+                                    with st.spinner("AI 解析中..."):
+                                        last_char = state["last_idiom"][-1]
+                                        prompt = f"請給出一個以「{last_char}」開頭（或同音）的常見繁體中文四字成語，並解釋它的意思。請注意回答格式：『成語：xxxx \n 意思：xxxx』"
+                                        res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+                                        save_message(current_room, "Referee (AI)", f"💡 第二次提示：\n{res.text.strip()}", "referee", requested_by=current_player)
+                                        st.toast("已扣除 5 分！", icon="💰")
+                                        time.sleep(1)
+                                        st.rerun()
         else:
             st.markdown(f"<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>⏳ 目前輪到：<b>{state['current_turn']}</b>{sos_suffix}</div>", unsafe_allow_html=True)
     else:
