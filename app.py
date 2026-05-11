@@ -579,16 +579,22 @@ else:
                             st.markdown(f"**{msg_user}**")
                             with st.popover(msg_text, use_container_width=True):
                                 
-                                # --- 功能 1：求生按鈕 ---
+                                # --- 功能 1：求生按鈕 (權限強化版) ---
+                                # 💡 只有當前輪到的人，且目前沒人處於求生狀態時，才顯示發動按鈕
+                                can_start_sos = (current_state["current_turn"] == player_name or current_state["current_turn"] is None)
+
                                 if not current_state["sos_user"]:
-                                    if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
-                                        if not current_state["last_idiom"]:
-                                            st.toast("遊戲還沒開始啦！", icon="⚠️")
-                                        else:
-                                            save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
-                                            st.rerun()
+                                    if can_start_sos:
+                                        if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
+                                            if not current_state["last_idiom"]:
+                                                st.toast("遊戲還沒開始啦！", icon="⚠️")
+                                            else:
+                                                save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
+                                                st.rerun()
+                                    # 如果不是自己的回合，就完全不顯示發動按鈕，防止幫別人按
                                 else:
-                                    st.info(f"🚨 {current_state['sos_user']} 正在求生連擊，暫無法發動！")
+                                    # 如果已經有人在求生了，顯示進度提示
+                                    st.info(f"🚨 {current_state['sos_user']} 正在求生連擊...")
 
                                 # --- 功能 2：刪除按鈕 (雙重鎖定機制) ---
                                 if is_self:
