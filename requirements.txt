@@ -2,3 +2,4 @@ streamlit
 google-generativeai
 oauth2client
 firebase-admin
+openpyxl==3.1.5
