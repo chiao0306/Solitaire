@@ -418,47 +418,39 @@ else:
                         with st.chat_message("ai"):
                             st.write(msg_text)
                     elif msg_type == "sos_start":
-                        # 讓發動求生的訊息變得超醒目
                         st.warning(f"🚨 **{msg_user}** {msg_text}")
                     else:
                         is_self = (msg_user == player_name)
                         with st.chat_message("user", avatar=msg_avatar):
+                            # 1. 先顯示名字（加粗，不包含在 popover 內）
+                            st.markdown(f"**{msg_user}**")
                             
-                            # 💡 魔法排版：用 columns 把文字和選單按鈕並排
-                            # 0.85 給文字，0.15 給右邊的小按鈕
-                            col1, col2 = st.columns([0.85, 0.15])
-                            
-                            with col1:
-                                st.write(f"**{msg_user}**: {msg_text}")
-                            
-                            with col2:
-                                # 把下拉選單縮成一個小表情貼
-                                with st.popover("⚡", help="遊戲操作與管理"):
-                                    
-                                    # --- 功能 1：求生按鈕 ---
-                                    # 放在選單最上面，大家都看得到
-                                    if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
-                                        last_idiom, sos_user, sos_count = analyze_game_state(history)
-                                        if sos_user:
-                                            st.toast(f"現在是 {sos_user} 的求生時間，請稍候！", icon="⚠️")
-                                        elif not last_idiom:
-                                            st.toast("遊戲還沒開始啦！", icon="⚠️")
-                                        else:
-                                            save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start")
-                                            st.rerun()
+                            # 2. 只有對話文字作為 Popover 的觸發按鈕
+                            # use_container_width=True 讓它在手機上比較好點擊
+                            with st.popover(msg_text, use_container_width=True):
+                                
+                                # --- 功能 1：求生按鈕 (放在上方方便點擊) ---
+                                if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
+                                    last_idiom, sos_user, sos_count = analyze_game_state(history)
+                                    if sos_user:
+                                        st.toast(f"現在是 {sos_user} 的求生時間！", icon="⚠️")
+                                    elif not last_idiom:
+                                        st.toast("遊戲還沒開始啦！", icon="⚠️")
+                                    else:
+                                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start")
+                                        st.rerun()
 
-                                    # --- 功能 2：刪除按鈕 ---
-                                    # 只有自己的訊息才允許刪除
-                                    if is_self:
-                                        # 用空白行把它們遠遠隔開，避免誤觸
-                                        st.write("")
-                                        st.write("")
-                                        st.divider()
-                                        st.caption("🚨 危險操作區")
-                                        
-                                        if st.button("🗑️ 刪除此句與後續", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
-                                            delete_messages_from(room_name, msg.get("timestamp"))
-                                            st.rerun()
+                                # --- 功能 2：刪除按鈕 (只有自己的訊息才有，且拉開距離) ---
+                                if is_self:
+                                    # 增加視覺間距，避免誤觸
+                                    st.write("")
+                                    st.write("")
+                                    st.divider()
+                                    st.caption("🚨 危險操作區")
+                                    
+                                    if st.button("🗑️ 刪除此句與後續", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
+                                        delete_messages_from(room_name, msg.get("timestamp"))
+                                        st.rerun()
 
     display_chat_room(current_room, current_player)
 
