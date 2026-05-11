@@ -583,10 +583,11 @@ else:
                             st.write(msg_text)
                     elif msg_type == "sos_start":
                         st.warning(f"🚨 **{msg_user}** {msg_text}")
+                    # 💡 新增這行：處理入房通知，用小字顯示
+                    elif msg_type == "join_room":
+                        st.caption(f"👋 **{msg_user}** {msg_text}")
                     else:
                         is_self = (msg_user == player_name)
-                        is_locked = msg.get("id") in locked_msg_ids # 判斷是否被鎖死
-                        
                         with st.chat_message("user", avatar=msg_avatar):
                             st.markdown(f"**{msg_user}**")
                             with st.popover(msg_text, use_container_width=True):
@@ -650,7 +651,8 @@ else:
             st.balloons()
     else:
         is_my_turn = False
-        if state["current_turn"] is None or state["current_turn"] == current_player or current_player not in state["players_order"]:
+        # 💡 徹底移除特權：只有「真的輪到你」或「房間剛開沒人講過話」才能打字
+        if state["current_turn"] is None or state["current_turn"] == current_player:
             is_my_turn = True 
             
         # 💡 輸入框的浮水印也跟著動態改變，提示這是第幾個求生詞
