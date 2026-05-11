@@ -137,25 +137,28 @@ def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
     return bool(set(last_char_pinyins).intersection(set(first_char_pinyins)))
 
 def get_game_state(history):
-    """終極狀態引擎：一次算出分數、輪次、求生狀態、生死存亡"""
+    """終極狀態引擎：支援 AI 退件不換人、還原上一個題目"""
     STARTING_HP = 50  
     
     scores = {}
     is_game_over = False
     loser = None  
-    
     sos_user = None
     sos_count = 0
-    last_idiom = None
+    
+    # 💡 雙重記憶系統
+    valid_idiom = None   # 上一個「確定的」合法成語
+    pending_idiom = None # 最新講出的成語 (等待驗證)
+    rejected = False     # 是否剛剛被裁判打 ❌
+    
     last_chat_user = None  
-    players_order = [] # 記錄玩家加入的順序
+    players_order = []
 
     for msg in history:
         m_type = msg.get("type", "chat")
         user = msg.get("user_name", "")
         text = msg.get("text", "")
         
-        # 處理遊戲重置與投降
         if m_type == "game_over":
             is_game_over = True
         elif m_type == "system" and "重新開始" in text:
@@ -163,34 +166,40 @@ def get_game_state(history):
             scores.clear()
             loser = None
             players_order.clear()
-            last_idiom = None
+            valid_idiom = None
+            pending_idiom = None
+            rejected = False
 
-        # 玩家加入排隊序列與初始給分
         if user and user not in ["System", "Referee (AI)"]:
             if user not in scores:
                 scores[user] = STARTING_HP
             if user not in players_order:
-                players_order.append(user) # 新來的排在後面
+                players_order.append(user)
 
-        # 抓取 AI 隨機出題
         if m_type == "system" and "題目為" in text:
             try:
-                last_idiom = text.split("「**")[1].split("**」")[0]
+                valid_idiom = text.split("「**")[1].split("**」")[0]
             except:
-                last_idiom = text[-4:]
+                valid_idiom = text[-4:]
+            pending_idiom = valid_idiom
+            rejected = False
             sos_user = None
             sos_count = 0
 
-        # 求生模式啟動
         elif m_type == "sos_start":
             sos_user = user
             sos_count = 0
             
-        # 玩家正常發言計分
         elif m_type == "chat" and user not in ["System", "Referee (AI)"]:
-            last_idiom = text
+            # 如果上一次沒有被退件，就把待確認的成語轉正為合法成語
+            if not rejected:
+                valid_idiom = pending_idiom
+            
+            pending_idiom = text
+            rejected = False
             last_chat_user = user
             
+            # 給分邏輯
             if sos_user == user:
                 sos_count += 1
                 if sos_count == 3:
@@ -202,28 +211,33 @@ def get_game_state(history):
                 sos_user = None
                 sos_count = 0
                 
-        # 裁判扣分機制
         elif m_type == "referee":
             if "❌" in text and "不是成語" in text:
+                rejected = True
                 if last_chat_user and last_chat_user in scores:
                     scores[last_chat_user] -= 10
                     if scores[last_chat_user] <= 0:
                         is_game_over = True
                         loser = last_chat_user
 
-    # --- 輪次計算邏輯 (回合制核心) ---
+    # 💡 決定現在要給玩家接的題目是什麼 (退件就給上一個合法字)
+    target_idiom = valid_idiom if rejected else pending_idiom
+
+    # --- 輪次計算邏輯 ---
     if sos_user:
-        current_turn = sos_user  # 如果有人在求生，回合鎖死在他身上
+        current_turn = sos_user  
     elif not players_order:
-        current_turn = None      # 房間沒人，任何人都可以搶第一
+        current_turn = None      
     elif last_chat_user in players_order:
-        # 找出上一個講話的人，下一個就換他後面那位
-        idx = players_order.index(last_chat_user)
-        current_turn = players_order[(idx + 1) % len(players_order)]
+        if rejected:
+            # 💡 核心機制：剛剛被判錯，回合不推進，還是換他！
+            current_turn = last_chat_user
+        else:
+            idx = players_order.index(last_chat_user)
+            current_turn = players_order[(idx + 1) % len(players_order)]
     else:
         current_turn = players_order[0]
 
-    # 排序分數
     sorted_scores = dict(sorted(scores.items(), key=lambda item: item[1], reverse=True))
     
     return {
@@ -232,9 +246,10 @@ def get_game_state(history):
         "loser": loser,
         "sos_user": sos_user,
         "sos_count": sos_count,
-        "last_idiom": last_idiom,
+        "last_idiom": target_idiom, 
         "players_order": players_order,
-        "current_turn": current_turn
+        "current_turn": current_turn,
+        "rejected": rejected # 讓 UI 知道現在是退件重答狀態
     }
 
 # ==========================================
@@ -511,6 +526,13 @@ else:
     def display_chat_room(room_name, player_name):
         history = get_room_history(room_name)
         chat_container = st.container(height=500)
+        
+        # 💡 預先掃描：抓出被裁判打 ❌ 的「犯罪證據」ID
+        locked_msg_ids = set()
+        for i in range(len(history) - 1):
+            if history[i].get("type") == "chat" and history[i+1].get("type") == "referee" and "❌" in history[i+1].get("text"):
+                locked_msg_ids.add(history[i].get("id"))
+
         with chat_container:
             if not history:
                 st.info("趕快開始出題吧！")
@@ -519,11 +541,7 @@ else:
                     msg_type = msg.get("type", "chat")
                     msg_user = msg.get("user_name", "")
                     msg_text = msg.get("text", "")
-                    
-                    # --- 終極頭像防彈機制 ---
                     msg_avatar = str(msg.get("avatar", "")).strip()
-                    # 只要這個頭像不在我們一開始設定的 AVATAR_LIST 表情包清單裡
-                    # (管它是 "None"、"nan"、空字串還是亂碼)，通通戴上墨鏡！
                     if msg_avatar not in AVATAR_LIST:
                         msg_avatar = "😎"
 
@@ -536,70 +554,72 @@ else:
                         st.warning(f"🚨 **{msg_user}** {msg_text}")
                     else:
                         is_self = (msg_user == player_name)
+                        is_locked = msg.get("id") in locked_msg_ids # 判斷是否被鎖死
+                        
                         with st.chat_message("user", avatar=msg_avatar):
-                            # 顯示名字（不可點擊）
                             st.markdown(f"**{msg_user}**")
-                            
-                            # 只有對話文字作為 Popover 的觸發按鈕
                             with st.popover(msg_text, use_container_width=True):
                                 
-                                # --- 功能 1：求生按鈕 ---
                                 if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
-                                    last_idiom, sos_user, sos_count = analyze_game_state(history)
-                                    if sos_user:
-                                        st.toast(f"現在是 {sos_user} 的求生時間！", icon="⚠️")
-                                    elif not last_idiom:
+                                    state = get_game_state(history)
+                                    if state["sos_user"]:
+                                        st.toast(f"現在是 {state['sos_user']} 的求生時間！", icon="⚠️")
+                                    elif not state["last_idiom"]:
                                         st.toast("遊戲還沒開始啦！", icon="⚠️")
                                     else:
-                                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", "current_avatar")
+                                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
                                         st.rerun()
 
-                                # --- 功能 2：刪除按鈕 (安全鎖二次確認機制) ---
                                 if is_self:
-                                    # 移除了醜醜的空白行，只留一條細緻的分隔線
                                     st.divider()
-                                    
-                                    # 製作一個安全鎖：打勾後才顯示真正的刪除按鈕
-                                    unlock = st.checkbox("解鎖刪除功能", key=f"chk_del_{msg.get('id')}")
-                                    
-                                    if unlock:
-                                        if st.button("🗑️ 確定刪除 (此句與後續)", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
-                                            delete_messages_from(room_name, msg.get("timestamp"))
-                                            st.rerun()
-
+                                    # 💡 如果是犯罪證據，直接封鎖刪除功能！
+                                    if is_locked:
+                                        st.error("🔒 已被裁判扣分，無法刪除以消滅證據！")
+                                    else:
+                                        unlock = st.checkbox("解鎖刪除功能", key=f"chk_del_{msg.get('id')}")
+                                        if unlock:
+                                            if st.button("🗑️ 確定刪除 (此句與後續)", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
+                                                delete_messages_from(room_name, msg.get("timestamp"))
+                                                st.rerun()
     display_chat_room(current_room, current_player)
 
-    # 💡 獲取最新狀態
+    # 獲取最新狀態
     state = get_game_state(chat_history)
     
-    # --- 1. 迷你輪次顯示器 (不佔版面) ---
+    # --- 1. 迷你輪次顯示器 (加入退件紅字警告) ---
     if state["is_game_over"]:
         st.markdown("<div style='text-align: center; color: red; font-size: 13px; margin: 5px 0;'>🏁 遊戲已結算</div>", unsafe_allow_html=True)
     elif state["current_turn"]:
         if state["current_turn"] == current_player:
-            st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 13px; margin: 5px 0;'>🟢 現在輪到你發言！</div>", unsafe_allow_html=True)
+            # 💡 如果是被退件狀態，跳紅字！
+            if state.get("rejected"):
+                st.markdown(f"<div style='text-align: center; color: #f44336; font-size: 13px; margin: 5px 0; font-weight: bold;'>🚨 被裁判退件！請重新接續「{state['last_idiom']}」</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 13px; margin: 5px 0;'>🟢 現在輪到你發言！</div>", unsafe_allow_html=True)
         else:
             st.markdown(f"<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>⏳ 目前輪到：<b>{state['current_turn']}</b></div>", unsafe_allow_html=True)
     else:
         st.markdown("<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>🟢 遊戲剛開始，任何人皆可出題！</div>", unsafe_allow_html=True)
 
-    # --- 2. 霸道輸入框與權限判斷 ---
+    # --- 2. 霸道輸入框 ---
     if state["is_game_over"]:
         st.chat_input("遊戲已結束，請點擊「清除遊戲重新開始」！", disabled=True)
         if chat_history and chat_history[-1].get("type") in ["game_over", "referee"]:
             st.balloons()
     else:
-        # 決定現在這個人能不能打字
         is_my_turn = False
-        if state["current_turn"] is None:
-            is_my_turn = True  # 沒人講話，誰都能搶頭香
-        elif state["current_turn"] == current_player:
-            is_my_turn = True  # 輪到我了
-        elif current_player not in state["players_order"]:
-            is_my_turn = True  # 我是新來的，可以隨時插隊加入戰局！
+        if state["current_turn"] is None or state["current_turn"] == current_player or current_player not in state["players_order"]:
+            is_my_turn = True 
             
-        # 如果不是我的回合，輸入框會直接反灰並顯示「請等候 xxx」
-        input_placeholder = "輸入你的成語..." if is_my_turn else f"請等候 {state['current_turn']} 發言..."
+        # 💡 輸入框的浮水印也跟著動態改變
+        if is_my_turn:
+            if state.get("rejected"):
+                input_placeholder = f"請重新接續「{state['last_idiom']}」..."
+            else:
+                input_placeholder = "輸入你的成語..."
+        else:
+            input_placeholder = f"請等候 {state['current_turn']} 發言..."
+            
         user_input = st.chat_input(input_placeholder, disabled=not is_my_turn)
         
         if user_input:
