@@ -408,18 +408,29 @@ else:
     # ==========================================
     with st.sidebar:
         st.header("🏆 戰況排行榜")
-        # 💡 使用新的狀態引擎
         state = get_game_state(chat_history)
         
         if state["scores"]:
-            for rank, (player, score) in enumerate(state["scores"].items(), 1):
+            current_rank = 0
+            prev_score = -1
+            
+            for player, score in state["scores"].items():
+                # 已經出局的人不參與獎牌排名
                 if score <= 0:
                     st.markdown(f"💀 **{player}**：出局")
-                elif rank == 1:
+                    continue
+                
+                # 💡 並列排名邏輯：只有當分數跟上一個人不一樣時，名次才會往下掉
+                if score != prev_score:
+                    current_rank += 1
+                    prev_score = score
+                    
+                # 根據名次發放獎牌
+                if current_rank == 1:
                     st.markdown(f"🥇 **{player}**：{score} 分")
-                elif rank == 2:
+                elif current_rank == 2:
                     st.markdown(f"🥈 **{player}**：{score} 分")
-                elif rank == 3:
+                elif current_rank == 3:
                     st.markdown(f"🥉 **{player}**：{score} 分")
                 else:
                     st.markdown(f"🏅 **{player}**：{score} 分")
@@ -427,7 +438,7 @@ else:
             st.info("尚無得分，趕快開始吧！")
             
         st.divider()
-
+      
         st.header("🎮 遊戲控制台")
         st.write(f"📍 房間：{current_room}")
         st.write(f"👤 身份：{current_player} {current_avatar}")
