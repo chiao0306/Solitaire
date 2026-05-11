@@ -137,7 +137,7 @@ def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
     return bool(set(last_char_pinyins).intersection(set(first_char_pinyins)))
 
 def get_game_state(history):
-    """終極狀態引擎：支援 AI 退件不換人、還原上一個題目"""
+    """終極狀態引擎：支援 AI 退件不換人、求生進度時光倒流"""
     STARTING_HP = 50  
     
     scores = {}
@@ -146,13 +146,16 @@ def get_game_state(history):
     sos_user = None
     sos_count = 0
     
-    # 💡 雙重記憶系統
-    valid_idiom = None   # 上一個「確定的」合法成語
-    pending_idiom = None # 最新講出的成語 (等待驗證)
-    rejected = False     # 是否剛剛被裁判打 ❌
+    valid_idiom = None   
+    pending_idiom = None 
+    rejected = False     
     
     last_chat_user = None  
     players_order = []
+
+    # 💡 新增：用來記錄上一步的求生狀態，以便被退件時「時光倒流」
+    last_chat_prev_sos_user = None
+    last_chat_prev_sos_count = 0
 
     for msg in history:
         m_type = msg.get("type", "chat")
@@ -169,6 +172,8 @@ def get_game_state(history):
             valid_idiom = None
             pending_idiom = None
             rejected = False
+            sos_user = None
+            sos_count = 0
 
         if user and user not in ["System", "Referee (AI)"]:
             if user not in scores:
@@ -191,7 +196,6 @@ def get_game_state(history):
             sos_count = 0
             
         elif m_type == "chat" and user not in ["System", "Referee (AI)"]:
-            # 如果上一次沒有被退件，就把待確認的成語轉正為合法成語
             if not rejected:
                 valid_idiom = pending_idiom
             
@@ -199,7 +203,10 @@ def get_game_state(history):
             rejected = False
             last_chat_user = user
             
-            # 給分邏輯
+            # 💡 記錄說話前的求生狀態
+            last_chat_prev_sos_user = sos_user
+            last_chat_prev_sos_count = sos_count
+            
             if sos_user == user:
                 sos_count += 1
                 if sos_count == 3:
@@ -216,21 +223,23 @@ def get_game_state(history):
                 rejected = True
                 if last_chat_user and last_chat_user in scores:
                     scores[last_chat_user] -= 20
+                    
+                    # 💡 核心機制：被退件時，還原上一步的求生狀態！
+                    sos_user = last_chat_prev_sos_user
+                    sos_count = last_chat_prev_sos_count
+                    
                     if scores[last_chat_user] <= 0:
                         is_game_over = True
                         loser = last_chat_user
 
-    # 💡 決定現在要給玩家接的題目是什麼 (退件就給上一個合法字)
     target_idiom = valid_idiom if rejected else pending_idiom
 
-    # --- 輪次計算邏輯 ---
     if sos_user:
         current_turn = sos_user  
     elif not players_order:
         current_turn = None      
     elif last_chat_user in players_order:
         if rejected:
-            # 💡 核心機制：剛剛被判錯，回合不推進，還是換他！
             current_turn = last_chat_user
         else:
             idx = players_order.index(last_chat_user)
@@ -249,7 +258,7 @@ def get_game_state(history):
         "last_idiom": target_idiom, 
         "players_order": players_order,
         "current_turn": current_turn,
-        "rejected": rejected # 讓 UI 知道現在是退件重答狀態
+        "rejected": rejected
     }
 
 # ==========================================
@@ -539,6 +548,9 @@ else:
             if msg.get("type") == "chat":
                 last_chat_msg_id = msg.get("id")
                 break
+                
+        # 💡 預先計算一次全域狀態，給選單內的按鈕判斷用
+        current_state = get_game_state(history)
 
         with chat_container:
             if not history:
@@ -567,15 +579,16 @@ else:
                             st.markdown(f"**{msg_user}**")
                             with st.popover(msg_text, use_container_width=True):
                                 
-                                if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
-                                    state = get_game_state(history)
-                                    if state["sos_user"]:
-                                        st.toast(f"現在是 {state['sos_user']} 的求生時間！", icon="⚠️")
-                                    elif not state["last_idiom"]:
-                                        st.toast("遊戲還沒開始啦！", icon="⚠️")
-                                    else:
-                                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
-                                        st.rerun()
+                                # --- 功能 1：求生按鈕 ---
+                                if not current_state["sos_user"]:
+                                    if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
+                                        if not current_state["last_idiom"]:
+                                            st.toast("遊戲還沒開始啦！", icon="⚠️")
+                                        else:
+                                            save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
+                                            st.rerun()
+                                else:
+                                    st.info(f"🚨 {current_state['sos_user']} 正在求生連擊，暫無法發動！")
 
                                 # --- 功能 2：刪除按鈕 (雙重鎖定機制) ---
                                 if is_self:
@@ -603,18 +616,24 @@ else:
     # 獲取最新狀態
     state = get_game_state(chat_history)
     
-    # --- 1. 迷你輪次顯示器 (加入退件紅字警告) ---
+    # --- 1. 迷你輪次顯示器 (加入求生狀態提示) ---
     if state["is_game_over"]:
         st.markdown("<div style='text-align: center; color: red; font-size: 13px; margin: 5px 0;'>🏁 遊戲已結算</div>", unsafe_allow_html=True)
     elif state["current_turn"]:
+        
+        # 💡 計算求生狀態的後綴文字
+        sos_suffix = ""
+        if state["sos_user"] == state["current_turn"]:
+            remaining = 3 - state["sos_count"]
+            sos_suffix = f" (🚨 求生連擊中：剩下 {remaining} 個成語)"
+
         if state["current_turn"] == current_player:
-            # 💡 如果是被退件狀態，跳紅字！
             if state.get("rejected"):
-                st.markdown(f"<div style='text-align: center; color: #f44336; font-size: 13px; margin: 5px 0; font-weight: bold;'>🚨 被裁判退件！請重新接續「{state['last_idiom']}」</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; color: #f44336; font-size: 13px; margin: 5px 0; font-weight: bold;'>🚨 被裁判退件！請重新接續「{state['last_idiom']}」{sos_suffix}</div>", unsafe_allow_html=True)
             else:
-                st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 13px; margin: 5px 0;'>🟢 現在輪到你發言！</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 13px; margin: 5px 0;'>🟢 現在輪到你發言！{sos_suffix}</div>", unsafe_allow_html=True)
         else:
-            st.markdown(f"<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>⏳ 目前輪到：<b>{state['current_turn']}</b></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>⏳ 目前輪到：<b>{state['current_turn']}</b>{sos_suffix}</div>", unsafe_allow_html=True)
     else:
         st.markdown("<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>🟢 遊戲剛開始，任何人皆可出題！</div>", unsafe_allow_html=True)
 
@@ -628,10 +647,12 @@ else:
         if state["current_turn"] is None or state["current_turn"] == current_player or current_player not in state["players_order"]:
             is_my_turn = True 
             
-        # 💡 輸入框的浮水印也跟著動態改變
+        # 💡 輸入框的浮水印也跟著動態改變，提示這是第幾個求生詞
         if is_my_turn:
             if state.get("rejected"):
                 input_placeholder = f"請重新接續「{state['last_idiom']}」..."
+            elif state["sos_user"] == current_player:
+                input_placeholder = f"請輸入第 {state['sos_count'] + 1} 個求生成語..."
             else:
                 input_placeholder = "輸入你的成語..."
         else:
