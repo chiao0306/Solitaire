@@ -136,105 +136,106 @@ def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
     
     return bool(set(last_char_pinyins).intersection(set(first_char_pinyins)))
 
-def analyze_game_state(history):
-    last_idiom = None
-    sos_user = None
-    sos_count = 0
-
-    for msg in history:
-        m_type = msg.get("type", "chat")
-        text = msg.get("text", "")
-        user = msg.get("user_name", "")
-
-        if m_type == "system" and "題目為" in text:
-            last_idiom = text.split("「**")[1].split("**」")[0]
-            sos_user = None
-            sos_count = 0
-        elif m_type == "chat":
-            last_idiom = text
-            if sos_user == user:
-                sos_count += 1
-                if sos_count >= 3:  # 3 連擊達成，解除求生狀態
-                    sos_user = None
-                    sos_count = 0
-            else:
-                sos_user = None
-                sos_count = 0
-        elif m_type == "sos_start":
-            sos_user = user
-            sos_count = 0
-
-    return last_idiom, sos_user, sos_count
-    
-def calculate_scores(history):
-    """掃描歷史紀錄，計算大家的得分與生死狀態"""
-    STARTING_HP = 50  # 💡 初始血量/分數，你可以自己修改！
+def get_game_state(history):
+    """終極狀態引擎：一次算出分數、輪次、求生狀態、生死存亡"""
+    STARTING_HP = 50  
     
     scores = {}
     is_game_over = False
-    loser = None  # 記錄是誰被扣到 0 分出局的
+    loser = None  
     
     sos_user = None
     sos_count = 0
-    last_chat_user = None  # 記錄最後一個發言的人（用來給 AI 裁判扣分）
+    last_idiom = None
+    last_chat_user = None  
+    players_order = [] # 記錄玩家加入的順序
 
     for msg in history:
         m_type = msg.get("type", "chat")
         user = msg.get("user_name", "")
         text = msg.get("text", "")
         
-        # 判斷遊戲是否因為投降結束
+        # 處理遊戲重置與投降
         if m_type == "game_over":
             is_game_over = True
         elif m_type == "system" and "重新開始" in text:
             is_game_over = False 
             scores.clear()
             loser = None
-            
-        # 確保只要有參與遊戲的人，都有基本血量
+            players_order.clear()
+            last_idiom = None
+
+        # 玩家加入排隊序列與初始給分
         if user and user not in ["System", "Referee (AI)"]:
             if user not in scores:
                 scores[user] = STARTING_HP
+            if user not in players_order:
+                players_order.append(user) # 新來的排在後面
 
-        # 狀態追蹤：是否進入求生模式
-        if m_type == "sos_start":
+        # 抓取 AI 隨機出題
+        if m_type == "system" and "題目為" in text:
+            try:
+                last_idiom = text.split("「**")[1].split("**」")[0]
+            except:
+                last_idiom = text[-4:]
+            sos_user = None
+            sos_count = 0
+
+        # 求生模式啟動
+        elif m_type == "sos_start":
             sos_user = user
             sos_count = 0
             
-        # 玩家發言計分邏輯
+        # 玩家正常發言計分
         elif m_type == "chat" and user not in ["System", "Referee (AI)"]:
+            last_idiom = text
             last_chat_user = user
             
             if sos_user == user:
                 sos_count += 1
                 if sos_count == 3:
-                    # 💡 第三擊才給分！
                     scores[user] += 10
                     sos_user = None
                     sos_count = 0
             else:
-                # 正常接龍
                 scores[user] += 10
                 sos_user = None
                 sos_count = 0
                 
-        # 💡 AI 裁判扣分機制
+        # 裁判扣分機制
         elif m_type == "referee":
-            # 只要裁判說不是成語，就扣最後一個發言者的分數
             if "❌" in text and "不是成語" in text:
                 if last_chat_user and last_chat_user in scores:
                     scores[last_chat_user] -= 10
-                    
-                    # 檢查是否扣到 0 宣告死亡
                     if scores[last_chat_user] <= 0:
                         is_game_over = True
                         loser = last_chat_user
 
-    # 依照分數高低排序
+    # --- 輪次計算邏輯 (回合制核心) ---
+    if sos_user:
+        current_turn = sos_user  # 如果有人在求生，回合鎖死在他身上
+    elif not players_order:
+        current_turn = None      # 房間沒人，任何人都可以搶第一
+    elif last_chat_user in players_order:
+        # 找出上一個講話的人，下一個就換他後面那位
+        idx = players_order.index(last_chat_user)
+        current_turn = players_order[(idx + 1) % len(players_order)]
+    else:
+        current_turn = players_order[0]
+
+    # 排序分數
     sorted_scores = dict(sorted(scores.items(), key=lambda item: item[1], reverse=True))
     
-    # 這次回傳 3 個東西：分數表、是否結束、誰輸了
-    return sorted_scores, is_game_over, loser
+    return {
+        "scores": sorted_scores,
+        "is_game_over": is_game_over,
+        "loser": loser,
+        "sos_user": sos_user,
+        "sos_count": sos_count,
+        "last_idiom": last_idiom,
+        "players_order": players_order,
+        "current_turn": current_turn
+    }
 
 # ==========================================
 # 3. 彈窗邏輯
@@ -357,12 +358,11 @@ else:
     # ==========================================
     with st.sidebar:
         st.header("🏆 戰況排行榜")
-        # 接收 3 個變數
-        scores, is_game_over, loser = calculate_scores(chat_history)
+        # 💡 使用新的狀態引擎
+        state = get_game_state(chat_history)
         
-        if scores:
-            for rank, (player, score) in enumerate(scores.items(), 1):
-                # 如果分數 <= 0，給他一個骷髏頭
+        if state["scores"]:
+            for rank, (player, score) in enumerate(state["scores"].items(), 1):
                 if score <= 0:
                     st.markdown(f"💀 **{player}**：出局")
                 elif rank == 1:
@@ -382,16 +382,19 @@ else:
         st.write(f"📍 房間：{current_room}")
         st.write(f"👤 身份：{current_player} {current_avatar}")
         
-        # --- 結算按鈕與顯示 ---
-        if not is_game_over:
+        # --- 投降按鈕與結果顯示 ---
+        # 💡 從 state 字典中讀取是否結束與輸家資訊
+        if not state["is_game_over"]:
             if st.button("🏳️ 我想不出來了 (投降)", use_container_width=True):
+                # 這裡記得也要帶入頭像
                 save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over", current_avatar)
                 st.rerun()
         else:
-            # 💡 顯示到底是誰害遊戲結束的
-            if loser:
-                st.error(f"💀 遊戲結算：**{loser}** 分數扣光出局啦！")
+            # 💡 如果遊戲結束，判斷是有人投降還是被扣到 0 分
+            if state["loser"]:
+                st.error(f"💀 遊戲結算：**{state['loser']}** 分數扣光出局啦！")
             else:
+                # 這是處理原本投降的狀況
                 st.error("🏁 遊戲已結算！")
             
         st.divider()
@@ -408,6 +411,7 @@ else:
                 except Exception as e:
                     st.error(f"出題失敗：{e}")
 
+        # --- 裁判按鈕加入 Toast 小提示 ---
         if st.button("⚖️ AI 裁判判斷", use_container_width=True):
             last_msg = next((m['text'] for m in reversed(chat_history) if m['type'] == 'chat'), None)
             if last_msg:
@@ -415,12 +419,18 @@ else:
                     try:
                         prompt = f"請判斷「{last_msg}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
                         response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                        save_message(current_room, "Referee (AI)", response.text.strip(), "referee")
+                        ans = response.text.strip()
+                        save_message(current_room, "Referee (AI)", ans, "referee")
+                        
+                        # 💡 判斷結果，跳出對應的加扣分提示！
+                        if "❌" in ans and "不是成語" in ans:
+                            st.toast("📉 完蛋了！裁判抓包，扣 10 分！", icon="💥")
+                        else:
+                            st.toast("✅ 裁判驗證通過！", icon="⚖️")
+                            
                         st.rerun()
                     except Exception as e:
                         st.error(f"判斷失敗：{e}")
-            else:
-                st.toast("目前尚無訊息可判斷")
 
         if st.button("💡 獲取 AI 提示", use_container_width=True):
             last_rec = chat_history[-1] if chat_history else None
@@ -554,39 +564,58 @@ else:
 
     display_chat_room(current_room, current_player)
 
-    # 接收 3 個變數
-    _, is_game_over, loser = calculate_scores(chat_history)
+    # 💡 獲取最新狀態
+    state = get_game_state(chat_history)
     
-    if is_game_over:
-        st.chat_input("遊戲已結束，請點擊「清除遊戲重新開始」！", disabled=True)
-        # 如果是剛結束的瞬間，噴發氣球慶祝
-        if chat_history:
-            last_msg = chat_history[-1]
-            if last_msg.get("type") == "game_over" or (last_msg.get("type") == "referee" and "❌" in last_msg.get("text")):
-                st.balloons()
-                
+    # --- 1. 迷你輪次顯示器 (不佔版面) ---
+    if state["is_game_over"]:
+        st.markdown("<div style='text-align: center; color: red; font-size: 13px; margin: 5px 0;'>🏁 遊戲已結算</div>", unsafe_allow_html=True)
+    elif state["current_turn"]:
+        if state["current_turn"] == current_player:
+            st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 13px; margin: 5px 0;'>🟢 現在輪到你發言！</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>⏳ 目前輪到：<b>{state['current_turn']}</b></div>", unsafe_allow_html=True)
     else:
-        # 這是你原本的輸入框邏輯
-        user_input = st.chat_input("輸入你的成語...")
+        st.markdown("<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>🟢 遊戲剛開始，任何人皆可出題！</div>", unsafe_allow_html=True)
+
+    # --- 2. 霸道輸入框與權限判斷 ---
+    if state["is_game_over"]:
+        st.chat_input("遊戲已結束，請點擊「清除遊戲重新開始」！", disabled=True)
+        if chat_history and chat_history[-1].get("type") in ["game_over", "referee"]:
+            st.balloons()
+    else:
+        # 決定現在這個人能不能打字
+        is_my_turn = False
+        if state["current_turn"] is None:
+            is_my_turn = True  # 沒人講話，誰都能搶頭香
+        elif state["current_turn"] == current_player:
+            is_my_turn = True  # 輪到我了
+        elif current_player not in state["players_order"]:
+            is_my_turn = True  # 我是新來的，可以隨時插隊加入戰局！
+            
+        # 如果不是我的回合，輸入框會直接反灰並顯示「請等候 xxx」
+        input_placeholder = "輸入你的成語..." if is_my_turn else f"請等候 {state['current_turn']} 發言..."
+        user_input = st.chat_input(input_placeholder, disabled=not is_my_turn)
+        
         if user_input:
-            last_idiom, sos_user, sos_count = analyze_game_state(chat_history)
+            can_ignore_tone = (state["sos_user"] == current_player and state["sos_count"] == 0)
 
-            # (底下保留你原本的狀況 A、驗證邏輯等...)
-            if sos_user and sos_user != current_player:
-                st.error(f"🤫 噓！現在是 {sos_user} 的生死存亡關頭，請讓他完成 3 連擊！")
-                st.stop() 
-
-            can_ignore_tone = (sos_user == current_player and sos_count == 0)
-
-            if check_idiom_connection(last_idiom, user_input, ignore_tone=can_ignore_tone):
+            # 驗證接龍
+            if check_idiom_connection(state["last_idiom"], user_input, ignore_tone=can_ignore_tone):
                 save_message(current_room, current_player, user_input, "chat", current_avatar)
-                if sos_user == current_player and sos_count == 2:
-                    save_message(current_room, "System", f"🎉 恭喜 **{current_player}** 成功完成 3 連擊，從地獄歸來！遊戲繼續！", "system")
+                
+                # 💡 成功時跳出得分 Toast
+                if state["sos_user"] == current_player and state["sos_count"] == 2:
+                    save_message(current_room, "System", f"🎉 恭喜 **{current_player}** 完成 3 連擊！", "system")
+                    st.toast("🎉 3 連擊逃生成功！+10 分", icon="🏆")
+                elif not can_ignore_tone:
+                    st.toast("✅ 接龍成功！+10 分", icon="✨")
+                    
                 st.rerun()
             else:
                 if can_ignore_tone:
-                    st.toast("❌ 發動求生的第一擊，至少要跟上一個字同音（可換聲調）！", icon="🚨")
-                elif sos_user == current_player:
-                    st.toast(f"❌ 連擊期間必須嚴格同音同調！請接續「{last_idiom[-1]}」", icon="🚨")
+                    st.toast("❌ 求生第一擊，至少要跟上一個字同音！", icon="🚨")
+                elif state["sos_user"] == current_player:
+                    st.toast(f"❌ 連擊期間需同音同調！接續「{state['last_idiom'][-1]}」", icon="🚨")
                 else:
-                    st.toast(f"❌ 讀音不合！請接續「{last_idiom[-1]}」的同音同調字！", icon="🚨")
+                    st.toast(f"❌ 讀音不合！請接續「{state['last_idiom'][-1]}」", icon="🚨")
