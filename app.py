@@ -764,8 +764,6 @@ else:
         else:
             input_placeholder = f"請等候 {state['current_turn']} 發言..."
             
-        user_input = st.chat_input(input_placeholder, disabled=not is_my_turn)
-        
         if user_input:
             can_ignore_tone = (state["sos_user"] == current_player and state["sos_count"] == 0)
 
@@ -773,14 +771,26 @@ else:
             if check_idiom_connection(state["last_idiom"], user_input, ignore_tone=can_ignore_tone):
                 save_message(current_room, current_player, user_input, "chat", current_avatar)
                 
-                # 💡 成功時跳出得分 Toast
-                if state["sos_user"] == current_player and state["sos_count"] == 2:
-                    save_message(current_room, "System", f"🎉 恭喜 **{current_player}** 完成 3 連擊！", "system")
-                    st.toast("🎉 3 連擊逃生成功！+10 分", icon="🏆")
-                elif not can_ignore_tone:
-                    st.toast("✅ 接龍成功！+10 分", icon="✨")
+                # 💡 檢查是否為完全同字
+                is_perfect = False
+                if state["last_idiom"] and user_input:
+                    if state["last_idiom"][-1] == user_input[0]:
+                        is_perfect = True
                 
-                # 👇 加上這行：強迫停頓 2 秒，讓加分泡泡華麗現身
+                # 💡 成功時跳出對應的得分 Toast
+                if state["sos_user"] == current_player:
+                    if state["sos_count"] == 2:
+                        score_gain = 20 if is_perfect else 10
+                        save_message(current_room, "System", f"🎉 恭喜 **{current_player}** 完成 3 連擊！", "system")
+                        st.toast(f"🎉 3 連擊逃生成功！+{score_gain} 分", icon="🏆")
+                    else:
+                        st.toast("✅ 連擊接續成功！請繼續保持...", icon="✨")
+                else:
+                    if is_perfect:
+                        st.toast("🔥 同字完美接龍！+20 分", icon="🔥")
+                    else:
+                        st.toast("✅ 接龍成功！+10 分", icon="✨")
+                
                 time.sleep(2)    
                 st.rerun()
                 
