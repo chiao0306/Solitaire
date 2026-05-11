@@ -764,6 +764,8 @@ else:
         else:
             input_placeholder = f"請等候 {state['current_turn']} 發言..."
             
+        user_input = st.chat_input(input_placeholder, disabled=not is_my_turn)
+            
         if user_input:
             can_ignore_tone = (state["sos_user"] == current_player and state["sos_count"] == 0)
 
