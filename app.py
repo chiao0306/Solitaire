@@ -11,6 +11,28 @@ from firebase_admin import credentials, firestore
 st.set_page_config(page_title="成語接龍", page_icon="🔗", layout="centered")
 
 # ==========================================
+# 注入自訂 CSS：強制手機版按鈕也要左右並排
+# ==========================================
+st.markdown("""
+    <style>
+    @media (max-width: 640px) {
+        /* 強制水平區塊不換行 */
+        [data-testid="stHorizontalBlock"] {
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 10px !important; /* 兩顆按鈕中間的間距 */
+        }
+        /* 強制裡面的欄位寬度各佔 50% */
+        [data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            width: 50% !important;
+            min-width: 0 !important;
+            flex: 1 1 50% !important;
+        }
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # 1. 初始化設定 (Gemini)
 # ==========================================
 try:
