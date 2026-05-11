@@ -411,14 +411,13 @@ else:
                     else:
                         is_self = (msg_user == player_name)
                         with st.chat_message("user", avatar=msg_avatar):
-                            # 1. 先顯示名字（加粗，不包含在 popover 內）
+                            # 顯示名字（不可點擊）
                             st.markdown(f"**{msg_user}**")
                             
-                            # 2. 只有對話文字作為 Popover 的觸發按鈕
-                            # use_container_width=True 讓它在手機上比較好點擊
+                            # 只有對話文字作為 Popover 的觸發按鈕
                             with st.popover(msg_text, use_container_width=True):
                                 
-                                # --- 功能 1：求生按鈕 (放在上方方便點擊) ---
+                                # --- 功能 1：求生按鈕 ---
                                 if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
                                     last_idiom, sos_user, sos_count = analyze_game_state(history)
                                     if sos_user:
@@ -429,17 +428,18 @@ else:
                                         save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start")
                                         st.rerun()
 
-                                # --- 功能 2：刪除按鈕 (只有自己的訊息才有，且拉開距離) ---
+                                # --- 功能 2：刪除按鈕 (安全鎖二次確認機制) ---
                                 if is_self:
-                                    # 增加視覺間距，避免誤觸
-                                    st.write("")
-                                    st.write("")
+                                    # 移除了醜醜的空白行，只留一條細緻的分隔線
                                     st.divider()
-                                    st.caption("🚨 危險操作區")
                                     
-                                    if st.button("🗑️ 刪除此句與後續", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
-                                        delete_messages_from(room_name, msg.get("timestamp"))
-                                        st.rerun()
+                                    # 製作一個安全鎖：打勾後才顯示真正的刪除按鈕
+                                    unlock = st.checkbox("解鎖刪除功能", key=f"chk_del_{msg.get('id')}")
+                                    
+                                    if unlock:
+                                        if st.button("🗑️ 確定刪除 (此句與後續)", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
+                                            delete_messages_from(room_name, msg.get("timestamp"))
+                                            st.rerun()
 
     display_chat_room(current_room, current_player)
 
