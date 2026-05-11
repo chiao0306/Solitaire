@@ -477,27 +477,51 @@ else:
 
         # --- 裁判按鈕加入 Toast 小提示 ---
         if st.button("⚖️ AI 裁判判斷", use_container_width=True):
-            last_msg = next((m['text'] for m in reversed(chat_history) if m['type'] == 'chat'), None)
-            if last_msg:
-                with st.status("裁判審核中...", expanded=False):
-                    try:
-                        prompt = f"請判斷「{last_msg}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
-                        response = model.generate_content(prompt, safety_settings=custom_safety_settings)
-                        ans = response.text.strip()
-                        save_message(current_room, "Referee (AI)", ans, "referee")
-                        
-                        # 💡 判斷結果，跳出對應的加扣分提示！
-                        if "❌" in ans and "不是成語" in ans:
-                            st.toast("📉 完蛋了！裁判抓包，扣 20 分！", icon="💥")
-                        else:
-                            st.toast("✅ 裁判驗證通過！", icon="⚖️")
-                        
-                        # 👇 加上這行：強迫停頓 2 秒，讓泡泡顯示出來
-                        time.sleep(2)    
+            # 1. 找出最後一則玩家發言 (chat) 的 index
+            last_chat_idx = -1
+            for i in range(len(chat_history)-1, -1, -1):
+                if chat_history[i].get('type') == 'chat':
+                    last_chat_idx = i
+                    break
+
+            if last_chat_idx != -1:
+                last_msg = chat_history[last_chat_idx].get('text', '')
+                
+                # 2. 檢查在這則發言之後，是否已經有裁判的「判斷」紀錄 (排除 AI 提示)
+                already_judged = False
+                for i in range(last_chat_idx + 1, len(chat_history)):
+                    msg_type = chat_history[i].get('type', '')
+                    text = chat_history[i].get('text', '')
+                    # 只要有裁判發言，且包含 ✅ 或 ❌，代表已經判過了
+                    if msg_type == 'referee' and ('✅' in text or '❌' in text):
+                        already_judged = True
+                        break
+
+                # 3. 根據檢查結果決定是否呼叫 AI
+                if already_judged:
+                    st.toast("⚠️ 裁判已經審核過這個成語囉！", icon="🛑")
+                else:
+                    with st.status("裁判審核中...", expanded=False):
+                        try:
+                            prompt = f"請判斷「{last_msg}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
+                            response = model.generate_content(prompt, safety_settings=custom_safety_settings)
+                            ans = response.text.strip()
+                            save_message(current_room, "Referee (AI)", ans, "referee")
                             
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"判斷失敗：{e}")
+                            # 💡 判斷結果，跳出對應的加扣分提示！
+                            if "❌" in ans and "不是成語" in ans:
+                                st.toast("📉 完蛋了！裁判抓包，扣 20 分！", icon="💥")
+                            else:
+                                st.toast("✅ 裁判驗證通過！", icon="⚖️")
+                            
+                            # 強迫停頓 2 秒，讓泡泡顯示出來
+                            time.sleep(2)    
+                                
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"判斷失敗：{e}")
+            else:
+                st.toast("尚無玩家發言，無法呼叫裁判！", icon="ℹ️")
                     
         st.divider()
         
