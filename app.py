@@ -377,23 +377,7 @@ else:
             st.info("尚無得分，趕快開始吧！")
             
         st.divider()
-        
-        if scores:
-            # 畫出超有 Vibe 的排行榜
-            for rank, (player, score) in enumerate(scores.items(), 1):
-                if rank == 1:
-                    st.markdown(f"🥇 **{player}**：{score} 分")
-                elif rank == 2:
-                    st.markdown(f"🥈 **{player}**：{score} 分")
-                elif rank == 3:
-                    st.markdown(f"🥉 **{player}**：{score} 分")
-                else:
-                    st.markdown(f"🏅 **{player}**：{score} 分")
-        else:
-            st.info("尚無得分，趕快開始吧！")
-            
-        st.divider()
-        
+
         st.header("🎮 遊戲控制台")
         st.write(f"📍 房間：{current_room}")
         st.write(f"👤 身份：{current_player} {current_avatar}")
