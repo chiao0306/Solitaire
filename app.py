@@ -614,8 +614,11 @@ else:
                     st.toast("🎉 3 連擊逃生成功！+10 分", icon="🏆")
                 elif not can_ignore_tone:
                     st.toast("✅ 接龍成功！+10 分", icon="✨")
-                    
+                
+                # 👇 加上這行：強迫停頓 2 秒，讓加分泡泡華麗現身
+                time.sleep(2)    
                 st.rerun()
+                
             else:
                 if can_ignore_tone:
                     st.toast("❌ 求生第一擊，至少要跟上一個字同音！", icon="🚨")
