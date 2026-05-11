@@ -619,7 +619,7 @@ else:
                 with col1:
                     if not state["sos_user"]:
                         with st.popover("🆘 發動求生", use_container_width=True):
-                            st.info("⚠️ 必須連續接出 3 個成語才能過關！")
+                            st.info("⚠️ 必須連續接出 3 個成語才能過關！\n\n💡 提示：第一個成語可以「換聲調」接字！")
                             if st.button("🚨 確定發動", type="primary", key="btn_sos", use_container_width=True):
                                 save_message(current_room, current_player, f"發動了「換聲調求生」！", "sos_start", current_avatar)
                                 st.rerun()
