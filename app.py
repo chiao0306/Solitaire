@@ -165,6 +165,31 @@ def analyze_game_state(history):
             sos_count = 0
 
     return last_idiom, sos_user, sos_count
+    
+def calculate_scores(history):
+    """掃描歷史紀錄，計算大家的得分"""
+    scores = {}
+    is_game_over = False
+    
+    for msg in history:
+        m_type = msg.get("type", "chat")
+        user = msg.get("user_name", "")
+        text = msg.get("text", "")
+        
+        # 判斷遊戲是否已結束
+        if m_type == "game_over":
+            is_game_over = True
+        elif m_type == "system" and "重新開始" in text:
+            # 如果中途重置過，狀態歸零
+            is_game_over = False 
+            
+        # 計算玩家得分 (排除系統與裁判)
+        if m_type == "chat" and user not in ["System", "Referee (AI)"]:
+            scores[user] = scores.get(user, 0) + 10
+
+    # 依照分數高低排序
+    sorted_scores = dict(sorted(scores.items(), key=lambda item: item[1], reverse=True))
+    return sorted_scores, is_game_over
 
 # ==========================================
 # 3. 彈窗邏輯
@@ -286,9 +311,37 @@ else:
     # 5. 側邊欄控制台
     # ==========================================
     with st.sidebar:
+        st.header("🏆 戰況排行榜")
+        scores, is_game_over = calculate_scores(chat_history)
+        
+        if scores:
+            # 畫出超有 Vibe 的排行榜
+            for rank, (player, score) in enumerate(scores.items(), 1):
+                if rank == 1:
+                    st.markdown(f"🥇 **{player}**：{score} 分")
+                elif rank == 2:
+                    st.markdown(f"🥈 **{player}**：{score} 分")
+                elif rank == 3:
+                    st.markdown(f"🥉 **{player}**：{score} 分")
+                else:
+                    st.markdown(f"🏅 **{player}**：{score} 分")
+        else:
+            st.info("尚無得分，趕快開始吧！")
+            
+        st.divider()
+        
         st.header("🎮 遊戲控制台")
         st.write(f"📍 房間：{current_room}")
         st.write(f"👤 身份：{current_player} {current_avatar}")
+        
+        # --- 投降按鈕 ---
+        if not is_game_over:
+            if st.button("🏳️ 我想不出來了 (投降)", use_container_width=True):
+                save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over")
+                st.rerun()
+        else:
+            st.error("🏁 遊戲已結算！")
+            
         st.divider()
         
         if st.button("🎲 AI 隨機出題", use_container_width=True):
@@ -443,33 +496,36 @@ else:
 
     display_chat_room(current_room, current_player)
 
-    user_input = st.chat_input("輸入你的成語...")
-    if user_input:
-        last_idiom, sos_user, sos_count = analyze_game_state(chat_history)
+    # 先判斷遊戲是不是結束了
+    _, is_game_over = calculate_scores(chat_history)
+    
+    if is_game_over:
+        st.chat_input("遊戲已結束，請點擊「清除遊戲重新開始」！", disabled=True)
+        # 如果是剛結束的瞬間，噴發一下氣球慶祝
+        if chat_history and chat_history[-1].get("type") == "game_over":
+            st.balloons()
+    else:
+        # 這是你原本的輸入框邏輯
+        user_input = st.chat_input("輸入你的成語...")
+        if user_input:
+            last_idiom, sos_user, sos_count = analyze_game_state(chat_history)
 
-        # 狀況 A：別人正在求生，你不准吵！
-        if sos_user and sos_user != current_player:
-            st.error(f"🤫 噓！現在是 {sos_user} 的生死存亡關頭，請讓他完成 3 連擊！")
-            st.stop() # 終止執行，不讓訊息送出
+            # (底下保留你原本的狀況 A、驗證邏輯等...)
+            if sos_user and sos_user != current_player:
+                st.error(f"🤫 噓！現在是 {sos_user} 的生死存亡關頭，請讓他完成 3 連擊！")
+                st.stop() 
 
-        # 決定能不能換聲調：只有在「自己是求生者」且「正要接第 1 個字 (sos_count == 0)」時才可以
-        can_ignore_tone = (sos_user == current_player and sos_count == 0)
+            can_ignore_tone = (sos_user == current_player and sos_count == 0)
 
-        # 開始驗證
-        if check_idiom_connection(last_idiom, user_input, ignore_tone=can_ignore_tone):
-            # 驗證成功，存入資料庫
-            save_message(current_room, current_player, user_input, "chat", current_avatar)
-
-            # 如果剛好完成第 3 擊，系統自動廣播慶祝
-            if sos_user == current_player and sos_count == 2:
-                save_message(current_room, "System", f"🎉 恭喜 **{current_player}** 成功完成 3 連擊，從地獄歸來！遊戲繼續！", "system")
-
-            st.rerun()
-        else:
-            # 驗證失敗，跳出不同情境的警告
-            if can_ignore_tone:
-                st.toast("❌ 發動求生的第一擊，至少要跟上一個字同音（可換聲調）！", icon="🚨")
-            elif sos_user == current_player:
-                st.toast(f"❌ 連擊期間必須嚴格同音同調！請接續「{last_idiom[-1]}」", icon="🚨")
+            if check_idiom_connection(last_idiom, user_input, ignore_tone=can_ignore_tone):
+                save_message(current_room, current_player, user_input, "chat", current_avatar)
+                if sos_user == current_player and sos_count == 2:
+                    save_message(current_room, "System", f"🎉 恭喜 **{current_player}** 成功完成 3 連擊，從地獄歸來！遊戲繼續！", "system")
+                st.rerun()
             else:
-                st.toast(f"❌ 讀音不合！請接續「{last_idiom[-1]}」的同音同調字！", icon="🚨")
+                if can_ignore_tone:
+                    st.toast("❌ 發動求生的第一擊，至少要跟上一個字同音（可換聲調）！", icon="🚨")
+                elif sos_user == current_player:
+                    st.toast(f"❌ 連擊期間必須嚴格同音同調！請接續「{last_idiom[-1]}」", icon="🚨")
+                else:
+                    st.toast(f"❌ 讀音不合！請接續「{last_idiom[-1]}」的同音同調字！", icon="🚨")
