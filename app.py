@@ -699,8 +699,17 @@ else:
                 input_placeholder = f"請重新接續「{state['last_idiom']}」..."
             elif state["sos_user"] == current_player:
                 input_placeholder = f"請輸入第 {state['sos_count'] + 1} 個求生成語..."
+            elif state["last_idiom"]:  
+                # 👇 改這裡！你可以從下面挑一句你最喜歡的語氣：
+                # 選項 A (熱情明確)：
+                input_placeholder = f"輪到你囉！請接續「{state['last_idiom']}」..."
+                # 選項 B (簡潔專業)：
+                # input_placeholder = f"換您發言，請接續「{state['last_idiom']}」..."
+                # 選項 C (短捷有力)：
+                # input_placeholder = f"該你了！請接「{state['last_idiom']}」..."
             else:
-                input_placeholder = "輸入你的成語..."
+                # 👇 遊戲剛開始，還沒有題目的時候顯示這句
+                input_placeholder = "請輸入第一個成語來開始遊戲..."
         else:
             input_placeholder = f"請等候 {state['current_turn']} 發言..."
             
