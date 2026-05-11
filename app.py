@@ -459,19 +459,20 @@ else:
                     
         st.divider()
         
-        # --- 投降按鈕與結果顯示 ---
-        # 💡 從 state 字典中讀取是否結束與輸家資訊
+        # --- 投降按鈕與結果顯示 (安全確認版) ---
         if not state["is_game_over"]:
-            if st.button("🏳️ 我想不出來了 (投降)", use_container_width=True):
-                # 這裡記得也要帶入頭像
-                save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over", current_avatar)
-                st.rerun()
+            # 💡 使用 popover 製作確認視窗，既美觀又不會導致閃退
+            with st.popover("🏳️ 我想不出來了 (投降)", use_container_width=True):
+                st.warning("確定要結束這場遊戲並結算分數嗎？")
+                
+                if st.button("✅ 確定投降", key="final_surrender", type="primary", use_container_width=True):
+                    # 確保帶入頭像與 game_over 類型
+                    save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over", current_avatar)
+                    st.rerun()
         else:
-            # 💡 如果遊戲結束，判斷是有人投降還是被扣到 0 分
             if state["loser"]:
                 st.error(f"💀 遊戲結算：**{state['loser']}** 分數扣光出局啦！")
             else:
-                # 這是處理原本投降的狀況
                 st.error("🏁 遊戲已結算！")
         
         if st.button("🧹 清除遊戲重新開始", use_container_width=True):
