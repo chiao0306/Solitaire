@@ -199,6 +199,13 @@ def get_game_state(history):
             sos_count = 0
             
         elif m_type == "chat" and user not in ["System", "Referee (AI)"]:
+            # 💡 判斷是否為「同字完美接龍」：抓取上一個被認可的成語最後一字，與現在的第一字比對
+            target_for_bonus = valid_idiom if rejected else pending_idiom
+            is_perfect_match = False
+            if target_for_bonus and text:
+                if target_for_bonus[-1] == text[0]:
+                    is_perfect_match = True
+
             if not rejected:
                 valid_idiom = pending_idiom
             
@@ -208,17 +215,19 @@ def get_game_state(history):
             last_chat_prev_sos_user = sos_user
             last_chat_prev_sos_count = sos_count
             
-            # 💡 只要有人成功接龍，提示次數就重置
+            # 只要有人成功接龍，提示次數就重置
             current_round_hints.clear() 
             
             if sos_user == user:
                 sos_count += 1
                 if sos_count == 3:
-                    scores[user] += 10
+                    # 求生模式完成時，如果最後一擊是同字完美接龍，一樣給 20 分
+                    scores[user] += 20 if is_perfect_match else 10
                     sos_user = None
                     sos_count = 0
             else:
-                scores[user] += 10
+                # 根據是否為同字完美接龍給予分數
+                scores[user] += 20 if is_perfect_match else 10
                 sos_user = None
                 sos_count = 0
                 
