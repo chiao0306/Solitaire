@@ -77,6 +77,11 @@ def clear_game_data(room_name):
     batch.commit()
 
 def delete_messages_from(room_name, target_timestamp):
+    # 加上防護：如果剛好遇到還沒產生時間戳的瞬間，就不執行避免崩潰
+    if not target_timestamp:
+        st.toast("資料同步中，請稍後一秒再刪除！", icon="⏳")
+        return
+        
     # 利用時間戳記，刪除大於等於該時間的所有對話
     docs = db.collection(CHAT_COLLECTION)\
              .where("room_name", "==", room_name)\
@@ -419,9 +424,13 @@ else:
                         is_self = (msg_user == player_name)
                         with st.chat_message("user", avatar=msg_avatar):
                             if is_self:
-                                # 傳入 msg.get('timestamp') 作為刪除條件
-                                if st.button(f"**{msg_user}**: {msg_text}", key=f"del_{msg.get('id')}", type="tertiary", help="點擊刪除此對話及後續所有紀錄"):
-                                    confirm_delete_dialog(room_name, msg_text, msg.get("timestamp"))
+                                # 💡 解決白畫面的神器：改用 st.popover (氣泡選單) 取代 st.dialog
+                                with st.popover(f"**{msg_user}**: {msg_text}", help="點擊刪除此對話及後續所有紀錄"):
+                                    st.warning("⚠️ 確定要刪除這句話以及後續所有紀錄嗎？")
+                                    # 注意這裡的 key 必須加上 doc id 確保唯一性
+                                    if st.button("✅ 確定刪除", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
+                                        delete_messages_from(room_name, msg.get("timestamp"))
+                                        st.rerun()
                             else:
                                 st.write(f"**{msg_user}**: {msg_text}")
 
