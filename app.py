@@ -505,10 +505,11 @@ else:
                     msg_user = msg.get("user_name", "")
                     msg_text = msg.get("text", "")
                     
-                    # --- 頭像防彈機制 ---
+                    # --- 終極頭像防彈機制 ---
                     msg_avatar = str(msg.get("avatar", "")).strip()
-                    # 如果是空字串、或是 csv 匯入產生的 nan，強制換成預設頭像
-                    if not msg_avatar or msg_avatar.lower() == "nan":
+                    # 只要這個頭像不在我們一開始設定的 AVATAR_LIST 表情包清單裡
+                    # (管它是 "None"、"nan"、空字串還是亂碼)，通通戴上墨鏡！
+                    if msg_avatar not in AVATAR_LIST:
                         msg_avatar = "😎"
 
                     if msg_type == "system":
