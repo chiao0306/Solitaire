@@ -257,6 +257,62 @@ else:
             del st.session_state['room']
             del st.session_state['player']
             st.rerun()
+        
+        # --- 以下是暫時的匯入工具，匯入完就可以刪掉 ---
+        st.divider()
+        st.subheader("🛠️ 秘密工具：匯入舊紀錄")
+        uploaded_file = st.file_uploader("上傳舊的 CSV 檔", type=["csv"])
+        
+        if uploaded_file is not None:
+            import pandas as pd
+            from datetime import datetime
+            
+            if st.button("🚀 開始將 CSV 匯入 Firebase", use_container_width=True):
+                with st.status("匯入中，請稍候...", expanded=True) as status:
+                    # 讀取 CSV
+                    df = pd.read_csv(uploaded_file)
+                    
+                    # 這裡我先幫你預設房間名稱為檔名擷取，你也可以自己改字串
+                    target_room_name = "成語接龍大戰" 
+                    
+                    # 準備批次寫入
+                    batch = db.batch()
+                    count = 0
+                    
+                    for index, row in df.iterrows():
+                        try:
+                            # 處理時間格式
+                            time_str = str(row['Timestamp'])
+                            dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+                            
+                            data = {
+                                "room_name": target_room_name,
+                                "user_name": str(row['User']),
+                                "text": str(row['Text']),
+                                "type": str(row['Type']),
+                                "avatar": str(row['Avatar']) if pd.notna(row['Avatar']) else "😎",
+                                "hint_answer": str(row['Hint_Answer']) if pd.notna(row['Hint_Answer']) else "",
+                                "timestamp": dt  # 轉換成 Firebase 看得懂的時間
+                            }
+                            
+                            # 加入批次處理
+                            new_ref = db.collection(CHAT_COLLECTION).document()
+                            batch.set(new_ref, data)
+                            count += 1
+                            
+                            # Firebase 一次最多批次寫入 500 筆
+                            if count % 450 == 0:
+                                batch.commit()
+                                st.write(f"已匯入 {count} 筆...")
+                                batch = db.batch() # 重新開一個批次
+                        except Exception as e:
+                            st.error(f"第 {index} 筆解析失敗：{e}")
+                    
+                    # 把剩下的寫入
+                    batch.commit()
+                    status.update(label=f"✅ 匯入完成！共 {count} 筆", state="complete")
+                    time.sleep(2)
+                    st.rerun()
 
     # ==========================================
     # 6. 聊天室主畫面 (局部更新)
