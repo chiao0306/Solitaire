@@ -11,22 +11,33 @@ from firebase_admin import credentials, firestore
 st.set_page_config(page_title="成語接龍", page_icon="🔗", layout="centered")
 
 # ==========================================
-# 注入自訂 CSS：強制手機版按鈕也要左右並排
+# 注入自訂 CSS：強制手機版按鈕也要左右並排 (防撐爆版)
 # ==========================================
 st.markdown("""
     <style>
     @media (max-width: 640px) {
-        /* 強制水平區塊不換行 */
+        /* 強制水平區塊為 Flex 且不換行 */
         [data-testid="stHorizontalBlock"] {
+            display: flex !important;
             flex-direction: row !important;
             flex-wrap: nowrap !important;
-            gap: 10px !important; /* 兩顆按鈕中間的間距 */
+            gap: 10px !important;
+            width: 100% !important;
         }
-        /* 強制裡面的欄位寬度各佔 50% */
+        /* 讓裡面的欄位均分寬度，並扣掉 gap 的空間 */
         [data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            width: 50% !important;
-            min-width: 0 !important;
-            flex: 1 1 50% !important;
+            width: calc(50% - 5px) !important; 
+            min-width: 0 !important; /* 絕對防止內容撐開外框 */
+            flex: 1 1 0 !important;
+        }
+        /* 讓裡面的按鈕微調，適應狹窄空間 */
+        [data-testid="stHorizontalBlock"] button {
+            padding-left: 5px !important;
+            padding-right: 5px !important;
+            font-size: 0.85rem !important; /* 字體稍微縮小 */
+            white-space: nowrap !important; /* 強制不換行 */
+            overflow: hidden !important; 
+            text-overflow: ellipsis !important; /* 如果字真的太長，用 ... 省略 */
         }
     }
     </style>
