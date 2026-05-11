@@ -354,17 +354,6 @@ else:
                 else:
                     st.toast("目前尚無訊息可提示")
                     
-        if st.button("🆘 換聲調求生 (需連擊3次)", use_container_width=True):
-            last_idiom, sos_user, sos_count = analyze_game_state(chat_history)
-            if sos_user:
-                st.warning(f"現在是 {sos_user} 的求生時間，你不能按！")
-            elif not last_idiom:
-                st.warning("遊戲還沒開始啦！")
-            else:
-                # 寫入一筆特殊的 sos_start 訊息
-                save_message(current_room, current_player, f"🚨 發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start")
-                st.rerun()
-        
         st.divider()
         if st.button("🧹 清除遊戲重新開始", use_container_width=True):
             confirm_restart_dialog(current_room)
