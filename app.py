@@ -328,13 +328,31 @@ def admin_clear_room_dialog(room_name):
             st.rerun()
         else:
             st.error("❌ 密碼錯誤，拒絕存取！")
+            
+@st.dialog("📖 遊戲說明", width="large")
+def show_readme_dialog():
+    try:
+        # 讀取同目錄下的 readme.md 檔案，務必指定 utf-8 編碼
+        with open("readme.md", "r", encoding="utf-8") as f:
+            st.markdown(f.read())
+    except FileNotFoundError:
+        st.error("找不到 readme.md 檔案！請確認檔案與 app.py 放在同一個目錄下。")
 
 # ==========================================
 # 4. 主畫面邏輯
 # ==========================================
-st.title("成語接龍🐉")
+# 使用 columns 讓標題和按鈕並排，vertical_alignment="bottom" 讓按鈕對齊標題底部
+col_title, col_btn = st.columns([3, 1], vertical_alignment="bottom")
+
+with col_title:
+    st.title("成語接龍🐉")
+
+with col_btn:
+    if st.button("📖 遊戲說明", use_container_width=True):
+        show_readme_dialog()
 
 if 'room' not in st.session_state or 'player' not in st.session_state:
+
     with st.container(border=True):
         st.subheader("🚪 進入遊戲大廳")
         
