@@ -3,3 +3,4 @@ google-generativeai
 oauth2client
 firebase-admin
 openpyxl==3.1.5
+pypinyin==0.51.0
