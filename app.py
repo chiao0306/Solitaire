@@ -91,6 +91,27 @@ def get_all_rooms():
     # Firebase 沒有直接撈出「不重複值」的語法，我們抓取所有房間名稱來過濾
     docs = db.collection(CHAT_COLLECTION).select(["room_name"]).stream()
     return list(set([doc.to_dict().get("room_name") for doc in docs if doc.to_dict().get("room_name")]))
+    
+# --- 管理員專用邏輯 ---
+def delete_entire_room(room_name):
+    """刪除整個房間的所有對話"""
+    docs = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name).stream()
+    batch = db.batch()
+    for doc in docs:
+        batch.delete(doc.reference)
+    batch.commit()
+
+def delete_user_in_room(room_name, user_name):
+    """刪除特定玩家在該房間的所有對話"""
+    docs = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name).where("user_name", "==", user_name).stream()
+    batch = db.batch()
+    for doc in docs:
+        batch.delete(doc.reference)
+    batch.commit()
+
+def edit_message(doc_id, new_text):
+    """修正特定訊息的內容"""
+    db.collection(CHAT_COLLECTION).document(doc_id).update({"text": new_text})
 
 # ==========================================
 # 3. 彈窗邏輯
@@ -257,6 +278,29 @@ else:
             del st.session_state['room']
             del st.session_state['player']
             st.rerun()
+            
+        # 在側邊欄底部加入管理功能
+        st.divider()
+        with st.expander("🛠️ 進階管理區"):
+            st.caption("僅限管理員操作")
+            
+            # 功能 1：刪除特定玩家
+            target_user = st.text_input("要刪除的人名", placeholder="輸入完整名字")
+            if st.button("🗑️ 刪除該員對話", use_container_width=True):
+                if target_user:
+                    delete_user_in_room(current_room, target_user)
+                    st.success(f"已清除 {target_user} 的訊息")
+                    time.sleep(1)
+                    st.rerun()
+            
+            st.write("---")
+            
+            # 功能 2：清空房間 (原本已有，這裡做加強版)
+            if st.button("🧨 毀滅式清空房間", type="primary", use_container_width=True):
+                delete_entire_room(current_room)
+                st.warning("房間已徹底重置")
+                time.sleep(1)
+                st.rerun()
         
         # --- 以下是暫時的匯入工具，匯入完就可以刪掉 ---
         st.divider()
