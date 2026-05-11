@@ -112,6 +112,31 @@ def delete_user_in_room(room_name, user_name):
 def edit_message(doc_id, new_text):
     """修正特定訊息的內容"""
     db.collection(CHAT_COLLECTION).document(doc_id).update({"text": new_text})
+    
+from pypinyin import pinyin, Style
+
+def check_idiom_connection(last_idiom, new_idiom):
+    """
+    檢查兩個成語是否能接龍（同音即可，不限聲調可以更寬鬆，這裡示範包含聲調的精準同音）
+    """
+    if not last_idiom or not new_idiom:
+        return True # 如果是開局第一個成語，直接放行
+    
+    # 抓出上一個成語的尾字，跟新成語的首字
+    last_char = last_idiom[-1]
+    first_char = new_idiom[0]
+    
+    # 取得這兩個字「所有可能」的拼音（包含破音字）
+    # Style.TONE3 會回傳帶有數字聲調的拼音，例如 'zhong4'
+    last_char_pinyins = pinyin(last_char, style=Style.TONE3, heteronym=True)[0]
+    first_char_pinyins = pinyin(first_char, style=Style.TONE3, heteronym=True)[0]
+    
+    # 檢查兩個清單有沒有交集 (只要有一個讀音對得上就算過關！)
+    # set() 是 Python 用來找交集的魔法
+    if set(last_char_pinyins).intersection(set(first_char_pinyins)):
+        return True
+    else:
+        return False
 
 # ==========================================
 # 3. 彈窗邏輯
@@ -366,7 +391,26 @@ else:
 
     display_chat_room(current_room, current_player)
 
-    user_input = st.chat_input("輸入你的成語...")
+        user_input = st.chat_input("輸入你的成語...")
     if user_input:
-        save_message(current_room, current_player, user_input, "chat", current_avatar)
-        st.rerun()
+        # 1. 先找出歷史紀錄裡，最後一個由玩家或系統發出的「有效成語」
+        last_valid_msg = None
+        for msg in reversed(chat_history):
+            if msg.get("type") in ["chat", "system"]:
+                # 假設系統出題格式是「【系統】遊戲開始！題目為「**成語**」」，我們只取成語
+                text = msg.get("text", "")
+                if msg.get("type") == "system" and "題目為" in text:
+                    last_valid_msg = text.split("「**")[1].split("**」")[0]
+                else:
+                    last_valid_msg = text
+                break
+
+        # 2. 用我們的神器函數檢查發音
+        if check_idiom_connection(last_valid_msg, user_input):
+            # 發音正確，存入資料庫
+            save_message(current_room, current_player, user_input, "chat", current_avatar)
+            st.rerun()
+        else:
+            # 發音不對，跳出警告，而且不存入資料庫！
+            st.toast(f"❌ 哎呀！「{user_input}」接不上「{last_valid_msg}」喔！", icon="🚨")
+            st.error(f"「{last_valid_msg[-1]}」跟「{user_input[0]}」讀音不合，請重新輸入！")
