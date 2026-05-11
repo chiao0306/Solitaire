@@ -591,6 +591,10 @@ else:
                 st.error(f"💀 遊戲結算：**{state['loser']}** 分數扣光出局啦！")
             else:
                 st.error("🏁 遊戲已結算！")
+                
+        if st.button("🔄 手動重新載入 (同步對手刪除)", use_container_width=True):
+            clear_local_cache()
+            st.rerun()
         
         if st.button("🧹 清除遊戲重新開始", use_container_width=True):
             confirm_restart_dialog(current_room)
