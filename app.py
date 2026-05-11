@@ -215,7 +215,7 @@ def get_game_state(history):
             if "❌" in text and "不是成語" in text:
                 rejected = True
                 if last_chat_user and last_chat_user in scores:
-                    scores[last_chat_user] -= 10
+                    scores[last_chat_user] -= 20
                     if scores[last_chat_user] <= 0:
                         is_game_over = True
                         loser = last_chat_user
@@ -424,7 +424,7 @@ else:
                         
                         # 💡 判斷結果，跳出對應的加扣分提示！
                         if "❌" in ans and "不是成語" in ans:
-                            st.toast("📉 完蛋了！裁判抓包，扣 10 分！", icon="💥")
+                            st.toast("📉 完蛋了！裁判抓包，扣 20 分！", icon="💥")
                         else:
                             st.toast("✅ 裁判驗證通過！", icon="⚖️")
                         
