@@ -167,29 +167,74 @@ def analyze_game_state(history):
     return last_idiom, sos_user, sos_count
     
 def calculate_scores(history):
-    """掃描歷史紀錄，計算大家的得分"""
+    """掃描歷史紀錄，計算大家的得分與生死狀態"""
+    STARTING_HP = 50  # 💡 初始血量/分數，你可以自己修改！
+    
     scores = {}
     is_game_over = False
+    loser = None  # 記錄是誰被扣到 0 分出局的
     
+    sos_user = None
+    sos_count = 0
+    last_chat_user = None  # 記錄最後一個發言的人（用來給 AI 裁判扣分）
+
     for msg in history:
         m_type = msg.get("type", "chat")
         user = msg.get("user_name", "")
         text = msg.get("text", "")
         
-        # 判斷遊戲是否已結束
+        # 判斷遊戲是否因為投降結束
         if m_type == "game_over":
             is_game_over = True
         elif m_type == "system" and "重新開始" in text:
-            # 如果中途重置過，狀態歸零
             is_game_over = False 
+            scores.clear()
+            loser = None
             
-        # 計算玩家得分 (排除系統與裁判)
-        if m_type == "chat" and user not in ["System", "Referee (AI)"]:
-            scores[user] = scores.get(user, 0) + 10
+        # 確保只要有參與遊戲的人，都有基本血量
+        if user and user not in ["System", "Referee (AI)"]:
+            if user not in scores:
+                scores[user] = STARTING_HP
+
+        # 狀態追蹤：是否進入求生模式
+        if m_type == "sos_start":
+            sos_user = user
+            sos_count = 0
+            
+        # 玩家發言計分邏輯
+        elif m_type == "chat" and user not in ["System", "Referee (AI)"]:
+            last_chat_user = user
+            
+            if sos_user == user:
+                sos_count += 1
+                if sos_count == 3:
+                    # 💡 第三擊才給分！
+                    scores[user] += 10
+                    sos_user = None
+                    sos_count = 0
+            else:
+                # 正常接龍
+                scores[user] += 10
+                sos_user = None
+                sos_count = 0
+                
+        # 💡 AI 裁判扣分機制
+        elif m_type == "referee":
+            # 只要裁判說不是成語，就扣最後一個發言者的分數
+            if "❌" in text and "不是成語" in text:
+                if last_chat_user and last_chat_user in scores:
+                    scores[last_chat_user] -= 10
+                    
+                    # 檢查是否扣到 0 宣告死亡
+                    if scores[last_chat_user] <= 0:
+                        is_game_over = True
+                        loser = last_chat_user
 
     # 依照分數高低排序
     sorted_scores = dict(sorted(scores.items(), key=lambda item: item[1], reverse=True))
-    return sorted_scores, is_game_over
+    
+    # 這次回傳 3 個東西：分數表、是否結束、誰輸了
+    return sorted_scores, is_game_over, loser
 
 # ==========================================
 # 3. 彈窗邏輯
@@ -312,7 +357,26 @@ else:
     # ==========================================
     with st.sidebar:
         st.header("🏆 戰況排行榜")
-        scores, is_game_over = calculate_scores(chat_history)
+        # 接收 3 個變數
+        scores, is_game_over, loser = calculate_scores(chat_history)
+        
+        if scores:
+            for rank, (player, score) in enumerate(scores.items(), 1):
+                # 如果分數 <= 0，給他一個骷髏頭
+                if score <= 0:
+                    st.markdown(f"💀 **{player}**：出局")
+                elif rank == 1:
+                    st.markdown(f"🥇 **{player}**：{score} 分")
+                elif rank == 2:
+                    st.markdown(f"🥈 **{player}**：{score} 分")
+                elif rank == 3:
+                    st.markdown(f"🥉 **{player}**：{score} 分")
+                else:
+                    st.markdown(f"🏅 **{player}**：{score} 分")
+        else:
+            st.info("尚無得分，趕快開始吧！")
+            
+        st.divider()
         
         if scores:
             # 畫出超有 Vibe 的排行榜
@@ -334,15 +398,17 @@ else:
         st.write(f"📍 房間：{current_room}")
         st.write(f"👤 身份：{current_player} {current_avatar}")
         
-        # --- 投降按鈕 ---
+        # --- 結算按鈕與顯示 ---
         if not is_game_over:
             if st.button("🏳️ 我想不出來了 (投降)", use_container_width=True):
-                # 💡 補上 current_avatar，讓投降訊息帶著自己的頭像！
                 save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over", current_avatar)
                 st.rerun()
-
         else:
-            st.error("🏁 遊戲已結算！")
+            # 💡 顯示到底是誰害遊戲結束的
+            if loser:
+                st.error(f"💀 遊戲結算：**{loser}** 分數扣光出局啦！")
+            else:
+                st.error("🏁 遊戲已結算！")
             
         st.divider()
         
@@ -503,14 +569,17 @@ else:
 
     display_chat_room(current_room, current_player)
 
-    # 先判斷遊戲是不是結束了
-    _, is_game_over = calculate_scores(chat_history)
+    # 接收 3 個變數
+    _, is_game_over, loser = calculate_scores(chat_history)
     
     if is_game_over:
         st.chat_input("遊戲已結束，請點擊「清除遊戲重新開始」！", disabled=True)
-        # 如果是剛結束的瞬間，噴發一下氣球慶祝
-        if chat_history and chat_history[-1].get("type") == "game_over":
-            st.balloons()
+        # 如果是剛結束的瞬間，噴發氣球慶祝
+        if chat_history:
+            last_msg = chat_history[-1]
+            if last_msg.get("type") == "game_over" or (last_msg.get("type") == "referee" and "❌" in last_msg.get("text")):
+                st.balloons()
+                
     else:
         # 這是你原本的輸入框邏輯
         user_input = st.chat_input("輸入你的成語...")
