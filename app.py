@@ -577,17 +577,27 @@ else:
                                         save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
                                         st.rerun()
 
+                                # --- 功能 2：刪除按鈕 (雙重鎖定機制) ---
                                 if is_self:
                                     st.divider()
-                                    # 💡 如果是犯罪證據，直接封鎖刪除功能！
+                                    
+                                    # 判斷這句話是不是全場最後一句玩家對話
+                                    is_last_chat = (msg.get("id") == last_chat_msg_id)
+                                    
+                                    # 🔒 鎖定條件 1：被裁判判錯扣分
                                     if is_locked:
-                                        st.error("🔒 已被裁判扣分，無法刪除以消滅證據！")
+                                        st.error("🔒 已被裁判扣分，無法消滅證據！")
+                                    # 🔒 鎖定條件 2：回合已過 (別人已經接話了)
+                                    elif not is_last_chat:
+                                        st.error("🔒 回合已過，無法刪除歷史紀錄！")
+                                    # 🔓 允許刪除：當下回合且還沒被判錯
                                     else:
                                         unlock = st.checkbox("解鎖刪除功能", key=f"chk_del_{msg.get('id')}")
                                         if unlock:
-                                            if st.button("🗑️ 確定刪除 (此句與後續)", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
+                                            if st.button("🗑️ 確定刪除", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
                                                 delete_messages_from(room_name, msg.get("timestamp"))
                                                 st.rerun()
+
     display_chat_room(current_room, current_player)
 
     # 獲取最新狀態
