@@ -46,13 +46,21 @@ db = firestore.client()
 # 我們將所有對話存放在這個集合 (Collection) 裡
 CHAT_COLLECTION = "chat_messages"
 
-def get_room_history(room_name):
-    # 根據房間名稱查詢，並依照時間戳記排序
-    docs = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name).order_by("timestamp").stream()
+def get_room_history(room_name, since_timestamp=None):
+    # 建立基礎查詢
+    query = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name)
+    
+    # 💡 增量查詢核心：如果有提供最後時間，只抓比這個時間更新的資料
+    if since_timestamp:
+        query = query.where("timestamp", ">", since_timestamp)
+        
+    # 依照時間排序並抓取
+    docs = query.order_by("timestamp").stream()
+    
     history = []
     for doc in docs:
         data = doc.to_dict()
-        data["id"] = doc.id  # 把 Firebase 產生的隨機文件 ID 存起來
+        data["id"] = doc.id 
         history.append(data)
     return history
 
@@ -294,6 +302,7 @@ def confirm_restart_dialog(room_name):
         clear_game_data(room_name)
         st.success("遊戲已重置！")
         time.sleep(1)
+        clear_local_cache()
         st.rerun()
 
 @st.dialog("🗑️ 刪除對話確認")
@@ -320,6 +329,7 @@ def admin_delete_user_dialog(room_name, user_name):
             delete_user_in_room(room_name, user_name)
             st.success(f"已清除 {user_name} 的訊息")
             time.sleep(1)
+            clear_local_cache()
             st.rerun()
         else:
             st.error("❌ 密碼錯誤，拒絕存取！")
@@ -334,6 +344,7 @@ def admin_clear_room_dialog(room_name):
             delete_entire_room(room_name)
             st.success("房間已徹底重置")
             time.sleep(1)
+            clear_local_cache()
             st.rerun()
         else:
             st.error("❌ 密碼錯誤，拒絕存取！")
@@ -428,7 +439,38 @@ else:
     current_room = st.session_state['room']
     current_player = st.session_state['player']
     current_avatar = st.session_state.get('avatar', '😎')
-    chat_history = get_room_history(current_room)
+    
+    # ==========================================
+    # 💡 新增：快取同步引擎
+    # ==========================================
+    def sync_chat_history(room_name):
+        # 1. 如果是剛進房間，初始化空的快取與時間戳
+        if "chat_cache" not in st.session_state or st.session_state.get("cache_room") != room_name:
+            st.session_state.chat_cache = []
+            st.session_state.last_timestamp = None
+            st.session_state.cache_room = room_name
+
+        # 2. 向 Firebase 請求「增量」新資料
+        new_msgs = get_room_history(room_name, since_timestamp=st.session_state.last_timestamp)
+        
+        # 3. 如果有新資料，追加到快取中，並更新最後時間戳
+        if new_msgs:
+            st.session_state.chat_cache.extend(new_msgs)
+            
+            # 抓取這批新訊息中有效的最新時間 (過濾掉還沒產生 ServerTimestamp 的瞬間)
+            valid_timestamps = [m["timestamp"] for m in new_msgs if m.get("timestamp")]
+            if valid_timestamps:
+                st.session_state.last_timestamp = valid_timestamps[-1]
+                
+        return st.session_state.chat_cache
+
+    def clear_local_cache():
+        """清除本地快取，強制下次重新下載全部對話"""
+        st.session_state.chat_cache = []
+        st.session_state.last_timestamp = None
+
+    # 原本的 chat_history 讀取改用快取引擎！
+    chat_history = sync_chat_history(current_room)
 
     # ==========================================
     # 5. 側邊欄控制台
@@ -584,7 +626,7 @@ else:
     # ==========================================
     @st.fragment(run_every=2)
     def display_chat_room(room_name, player_name):
-        history = get_room_history(room_name)
+        history = sync_chat_history(room_name)  # 👈 改成呼叫快取引擎
         chat_container = st.container(height=500)
         
         locked_msg_ids = set()
@@ -639,6 +681,7 @@ else:
                                             # 💡 拔除退費後門：只刪除這句話，前面買過的提示與扣分永遠存在！
                                             if st.button("🗑️ 確定刪除", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
                                                 delete_messages_from(room_name, msg.get("timestamp"))
+                                                clear_local_cache()
                                                 st.rerun()
                                 else:
                                     st.caption("🚫 這是對手的發言，無法操作")
