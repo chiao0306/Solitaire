@@ -527,11 +527,18 @@ else:
         history = get_room_history(room_name)
         chat_container = st.container(height=500)
         
-        # 💡 預先掃描：抓出被裁判打 ❌ 的「犯罪證據」ID
+        # 💡 預先掃描 1：抓出被裁判打 ❌ 的「犯罪證據」ID
         locked_msg_ids = set()
         for i in range(len(history) - 1):
             if history[i].get("type") == "chat" and history[i+1].get("type") == "referee" and "❌" in history[i+1].get("text"):
                 locked_msg_ids.add(history[i].get("id"))
+
+        # 💡 預先掃描 2：找出「全場最後一句玩家發言」的 ID
+        last_chat_msg_id = None
+        for msg in reversed(history):
+            if msg.get("type") == "chat":
+                last_chat_msg_id = msg.get("id")
+                break
 
         with chat_container:
             if not history:
