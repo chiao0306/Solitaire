@@ -452,7 +452,12 @@ else:
                     msg_type = msg.get("type", "chat")
                     msg_user = msg.get("user_name", "")
                     msg_text = msg.get("text", "")
-                    msg_avatar = msg.get("avatar", "😎")
+                    
+                    # --- 頭像防彈機制 ---
+                    msg_avatar = str(msg.get("avatar", "")).strip()
+                    # 如果是空字串、或是 csv 匯入產生的 nan，強制換成預設頭像
+                    if not msg_avatar or msg_avatar.lower() == "nan":
+                        msg_avatar = "😎"
 
                     if msg_type == "system":
                         st.info(msg_text)
