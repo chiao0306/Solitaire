@@ -579,55 +579,34 @@ else:
                             st.markdown(f"**{msg_user}**")
                             with st.popover(msg_text, use_container_width=True):
                                 
-                                # --- 功能 1：求生按鈕 (權限強化版) ---
-                                # 💡 只有當前輪到的人，且目前沒人處於求生狀態時，才顯示發動按鈕
-                                can_start_sos = (current_state["current_turn"] == player_name or current_state["current_turn"] is None)
-
-                                if not current_state["sos_user"]:
-                                    if can_start_sos:
-                                        if st.button("🆘 發動換聲調求生", key=f"sos_{msg.get('id')}", use_container_width=True):
-                                            if not current_state["last_idiom"]:
-                                                st.toast("遊戲還沒開始啦！", icon="⚠️")
-                                            else:
-                                                save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
-                                                st.rerun()
-                                    # 如果不是自己的回合，就完全不顯示發動按鈕，防止幫別人按
-                                else:
-                                    # 如果已經有人在求生了，顯示進度提示
-                                    st.info(f"🚨 {current_state['sos_user']} 正在求生連擊...")
-
-                                # --- 功能 2：刪除按鈕 (雙重鎖定機制) ---
+                                # 💡 求生按鈕已經搬家了，這裡只保留刪除機制
                                 if is_self:
-                                    st.divider()
-                                    
-                                    # 判斷這句話是不是全場最後一句玩家對話
                                     is_last_chat = (msg.get("id") == last_chat_msg_id)
                                     
-                                    # 🔒 鎖定條件 1：被裁判判錯扣分
                                     if is_locked:
                                         st.error("🔒 已被裁判扣分，無法消滅證據！")
-                                    # 🔒 鎖定條件 2：回合已過 (別人已經接話了)
                                     elif not is_last_chat:
                                         st.error("🔒 回合已過，無法刪除歷史紀錄！")
-                                    # 🔓 允許刪除：當下回合且還沒被判錯
                                     else:
                                         unlock = st.checkbox("解鎖刪除功能", key=f"chk_del_{msg.get('id')}")
                                         if unlock:
                                             if st.button("🗑️ 確定刪除", key=f"btn_del_{msg.get('id')}", type="primary", use_container_width=True):
                                                 delete_messages_from(room_name, msg.get("timestamp"))
                                                 st.rerun()
+                                else:
+                                    # 如果點到別人的成語，給予簡單提示
+                                    st.caption("🚫 這是對手的發言，無法操作")
 
     display_chat_room(current_room, current_player)
 
     # 獲取最新狀態
     state = get_game_state(chat_history)
     
-    # --- 1. 迷你輪次顯示器 (加入求生狀態提示) ---
+    # --- 1. 迷你輪次顯示器 (結合專屬求生按鈕) ---
     if state["is_game_over"]:
         st.markdown("<div style='text-align: center; color: red; font-size: 13px; margin: 5px 0;'>🏁 遊戲已結算</div>", unsafe_allow_html=True)
     elif state["current_turn"]:
         
-        # 💡 計算求生狀態的後綴文字
         sos_suffix = ""
         if state["sos_user"] == state["current_turn"]:
             remaining = 3 - state["sos_count"]
@@ -638,6 +617,15 @@ else:
                 st.markdown(f"<div style='text-align: center; color: #f44336; font-size: 13px; margin: 5px 0; font-weight: bold;'>🚨 被裁判退件！請重新接續「{state['last_idiom']}」{sos_suffix}</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"<div style='text-align: center; color: #4CAF50; font-size: 13px; margin: 5px 0;'>🟢 現在輪到你發言！{sos_suffix}</div>", unsafe_allow_html=True)
+            
+            # 💡 全新專屬位置：只有輪到你，且沒人在求生時，才會在輸入框上方出現求生按鈕！
+            if not state["sos_user"] and state["last_idiom"]:
+                with st.popover("🆘 想不到詞了？點此發動求生", use_container_width=True):
+                    st.info("⚠️ 將發動換聲調求生，必須連續接出 3 個成語才能過關！")
+                    if st.button("🚨 確定發動", type="primary", use_container_width=True):
+                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", current_avatar)
+                        st.rerun()
+
         else:
             st.markdown(f"<div style='text-align: center; color: gray; font-size: 13px; margin: 5px 0;'>⏳ 目前輪到：<b>{state['current_turn']}</b>{sos_suffix}</div>", unsafe_allow_html=True)
     else:
