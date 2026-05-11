@@ -135,6 +135,37 @@ def confirm_delete_dialog(room_name, msg_text, timestamp):
         st.success("對話已刪除！")
         time.sleep(1)
         st.rerun()
+        
+# --- 管理員密碼鎖彈窗 ---
+ADMIN_PASSWORD = "0306"  # 👈 這裡設定你的管理員專屬密碼，你可以隨便改！
+
+@st.dialog("🔐 權限驗證：刪除玩家對話")
+def admin_delete_user_dialog(room_name, user_name):
+    st.warning(f"即將刪除「{user_name}」在「{room_name}」的所有對話！")
+    pwd = st.text_input("請輸入管理員密碼：", type="password", placeholder="輸入密碼...")
+    
+    if st.button("🚨 確認刪除", type="primary", use_container_width=True):
+        if pwd == ADMIN_PASSWORD:
+            delete_user_in_room(room_name, user_name)
+            st.success(f"已清除 {user_name} 的訊息")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.error("❌ 密碼錯誤，拒絕存取！")
+
+@st.dialog("🔐 權限驗證：毀滅式清空房間")
+def admin_clear_room_dialog(room_name):
+    st.error(f"⚠️ 嚴重警告：這將徹底清空「{room_name}」的所有資料，且無法復原！")
+    pwd = st.text_input("請輸入管理員密碼：", type="password", key="pwd_clear", placeholder="輸入密碼...")
+    
+    if st.button("🧨 確定毀滅", type="primary", use_container_width=True):
+        if pwd == ADMIN_PASSWORD:
+            delete_entire_room(room_name)
+            st.success("房間已徹底重置")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.error("❌ 密碼錯誤，拒絕存取！")
 
 # ==========================================
 # 4. 主畫面邏輯
@@ -288,19 +319,17 @@ else:
             target_user = st.text_input("要刪除的人名", placeholder="輸入完整名字")
             if st.button("🗑️ 刪除該員對話", use_container_width=True):
                 if target_user:
-                    delete_user_in_room(current_room, target_user)
-                    st.success(f"已清除 {target_user} 的訊息")
-                    time.sleep(1)
-                    st.rerun()
+                    # 改為呼叫密碼彈窗，而不是直接刪除
+                    admin_delete_user_dialog(current_room, target_user)
+                else:
+                    st.warning("請先輸入人名")
             
             st.write("---")
             
-            # 功能 2：清空房間 (原本已有，這裡做加強版)
+            # 功能 2：清空房間
             if st.button("🧨 毀滅式清空房間", type="primary", use_container_width=True):
-                delete_entire_room(current_room)
-                st.warning("房間已徹底重置")
-                time.sleep(1)
-                st.rerun()
+                # 改為呼叫密碼彈窗，而不是直接刪除
+                admin_clear_room_dialog(current_room)
         
     # ==========================================
     # 6. 聊天室主畫面 (局部更新)
