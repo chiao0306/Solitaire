@@ -337,8 +337,10 @@ else:
         # --- 投降按鈕 ---
         if not is_game_over:
             if st.button("🏳️ 我想不出來了 (投降)", use_container_width=True):
-                save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over")
+                # 💡 補上 current_avatar，讓投降訊息帶著自己的頭像！
+                save_message(current_room, current_player, f"舉白旗投降了！遊戲結束！", "game_over", current_avatar)
                 st.rerun()
+
         else:
             st.error("🏁 遊戲已結算！")
             
@@ -483,7 +485,7 @@ else:
                                     elif not last_idiom:
                                         st.toast("遊戲還沒開始啦！", icon="⚠️")
                                     else:
-                                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start")
+                                        save_message(current_room, current_player, f"發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start", "current_avatar")
                                         st.rerun()
 
                                 # --- 功能 2：刪除按鈕 (安全鎖二次確認機制) ---
