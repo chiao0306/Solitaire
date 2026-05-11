@@ -367,6 +367,18 @@ if 'room' not in st.session_state or 'player' not in st.session_state:
                 st.session_state['room'] = final_room_name
                 st.session_state['player'] = final_player_name
                 st.session_state['avatar'] = selected_avatar
+                
+                # 💡 報到機制：檢查是否為第一次進入，是的話發送報到訊息排隊
+                history = get_room_history(final_room_name)
+                is_new = True
+                for msg in history:
+                    if msg.get("user_name") == final_player_name:
+                        is_new = False
+                        break
+                
+                if is_new:
+                    save_message(final_room_name, final_player_name, "加入了房間 👋", "join_room", selected_avatar)
+                
                 st.rerun()
             else:
                 st.warning("請完整填寫房間與名字！")
