@@ -583,16 +583,18 @@ else:
                             st.write(msg_text)
                     elif msg_type == "sos_start":
                         st.warning(f"🚨 **{msg_user}** {msg_text}")
-                    # 💡 新增這行：處理入房通知，用小字顯示
                     elif msg_type == "join_room":
                         st.caption(f"👋 **{msg_user}** {msg_text}")
                     else:
+                        # ✅ 修正處：補回遺失的關鍵變數定義
                         is_self = (msg_user == player_name)
+                        is_locked = msg.get("id") in locked_msg_ids 
+                        
                         with st.chat_message("user", avatar=msg_avatar):
                             st.markdown(f"**{msg_user}**")
                             with st.popover(msg_text, use_container_width=True):
                                 
-                                # 💡 求生按鈕已經搬家了，這裡只保留刪除機制
+                                # 💡 求生按鈕已經搬家，這裡只處理刪除邏輯
                                 if is_self:
                                     is_last_chat = (msg.get("id") == last_chat_msg_id)
                                     
@@ -607,7 +609,6 @@ else:
                                                 delete_messages_from(room_name, msg.get("timestamp"))
                                                 st.rerun()
                                 else:
-                                    # 如果點到別人的成語，給予簡單提示
                                     st.caption("🚫 這是對手的發言，無法操作")
 
     display_chat_room(current_room, current_player)
