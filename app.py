@@ -115,28 +115,51 @@ def edit_message(doc_id, new_text):
     
 from pypinyin import pinyin, Style
 
-def check_idiom_connection(last_idiom, new_idiom):
-    """
-    檢查兩個成語是否能接龍（同音即可，不限聲調可以更寬鬆，這裡示範包含聲調的精準同音）
-    """
+def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
+    """檢查成語接龍，支援『嚴格同調』與『忽略聲調(求生模式第一擊)』"""
     if not last_idiom or not new_idiom:
-        return True # 如果是開局第一個成語，直接放行
+        return True
     
-    # 抓出上一個成語的尾字，跟新成語的首字
     last_char = last_idiom[-1]
     first_char = new_idiom[0]
     
-    # 取得這兩個字「所有可能」的拼音（包含破音字）
-    # Style.TONE3 會回傳帶有數字聲調的拼音，例如 'zhong4'
-    last_char_pinyins = pinyin(last_char, style=Style.TONE3, heteronym=True)[0]
-    first_char_pinyins = pinyin(first_char, style=Style.TONE3, heteronym=True)[0]
+    # 魔法在此：如果 ignore_tone 是 True，就用 Style.NORMAL (無聲調)；否則用 TONE3 (嚴格聲調)
+    style = Style.NORMAL if ignore_tone else Style.TONE3
     
-    # 檢查兩個清單有沒有交集 (只要有一個讀音對得上就算過關！)
-    # set() 是 Python 用來找交集的魔法
-    if set(last_char_pinyins).intersection(set(first_char_pinyins)):
-        return True
-    else:
-        return False
+    last_char_pinyins = pinyin(last_char, style=style, heteronym=True)[0]
+    first_char_pinyins = pinyin(first_char, style=style, heteronym=True)[0]
+    
+    return bool(set(last_char_pinyins).intersection(set(first_char_pinyins)))
+
+def analyze_game_state(history):
+    last_idiom = None
+    sos_user = None
+    sos_count = 0
+
+    for msg in history:
+        m_type = msg.get("type", "chat")
+        text = msg.get("text", "")
+        user = msg.get("user_name", "")
+
+        if m_type == "system" and "題目為" in text:
+            last_idiom = text.split("「**")[1].split("**」")[0]
+            sos_user = None
+            sos_count = 0
+        elif m_type == "chat":
+            last_idiom = text
+            if sos_user == user:
+                sos_count += 1
+                if sos_count >= 3:  # 3 連擊達成，解除求生狀態
+                    sos_user = None
+                    sos_count = 0
+            else:
+                sos_user = None
+                sos_count = 0
+        elif m_type == "sos_start":
+            sos_user = user
+            sos_count = 0
+
+    return last_idiom, sos_user, sos_count
 
 # ==========================================
 # 3. 彈窗邏輯
@@ -325,6 +348,17 @@ else:
                             st.error(f"提示失敗：{e}")
                 else:
                     st.toast("目前尚無訊息可提示")
+                    
+        if st.button("🆘 換聲調求生 (需連擊3次)", use_container_width=True):
+            last_idiom, sos_user, sos_count = analyze_game_state(chat_history)
+            if sos_user:
+                st.warning(f"現在是 {sos_user} 的求生時間，你不能按！")
+            elif not last_idiom:
+                st.warning("遊戲還沒開始啦！")
+            else:
+                # 寫入一筆特殊的 sos_start 訊息
+                save_message(current_room, current_player, f"🚨 發動了「換聲調求生」！必須連續接出 3 個成語！", "sos_start")
+                st.rerun()
         
         st.divider()
         if st.button("🧹 清除遊戲重新開始", use_container_width=True):
@@ -379,6 +413,8 @@ else:
                     elif msg_type == "referee":
                         with st.chat_message("ai"):
                             st.write(msg_text)
+                    elif msg_type == "sos_start": st.warning(f"**{msg_user}** {msg_text}")
+                        
                     else:
                         is_self = (msg_user == player_name)
                         with st.chat_message("user", avatar=msg_avatar):
@@ -393,24 +429,31 @@ else:
 
     user_input = st.chat_input("輸入你的成語...")
     if user_input:
-        # 1. 先找出歷史紀錄裡，最後一個由玩家或系統發出的「有效成語」
-        last_valid_msg = None
-        for msg in reversed(chat_history):
-            if msg.get("type") in ["chat", "system"]:
-                # 假設系統出題格式是「【系統】遊戲開始！題目為「**成語**」」，我們只取成語
-                text = msg.get("text", "")
-                if msg.get("type") == "system" and "題目為" in text:
-                    last_valid_msg = text.split("「**")[1].split("**」")[0]
-                else:
-                    last_valid_msg = text
-                break
+        last_idiom, sos_user, sos_count = analyze_game_state(chat_history)
 
-        # 2. 用我們的神器函數檢查發音
-        if check_idiom_connection(last_valid_msg, user_input):
-            # 發音正確，存入資料庫
+        # 狀況 A：別人正在求生，你不准吵！
+        if sos_user and sos_user != current_player:
+            st.error(f"🤫 噓！現在是 {sos_user} 的生死存亡關頭，請讓他完成 3 連擊！")
+            st.stop() # 終止執行，不讓訊息送出
+
+        # 決定能不能換聲調：只有在「自己是求生者」且「正要接第 1 個字 (sos_count == 0)」時才可以
+        can_ignore_tone = (sos_user == current_player and sos_count == 0)
+
+        # 開始驗證
+        if check_idiom_connection(last_idiom, user_input, ignore_tone=can_ignore_tone):
+            # 驗證成功，存入資料庫
             save_message(current_room, current_player, user_input, "chat", current_avatar)
+
+            # 如果剛好完成第 3 擊，系統自動廣播慶祝
+            if sos_user == current_player and sos_count == 2:
+                save_message(current_room, "System", f"🎉 恭喜 **{current_player}** 成功完成 3 連擊，從地獄歸來！遊戲繼續！", "system")
+
             st.rerun()
         else:
-            # 發音不對，跳出警告，而且不存入資料庫！
-            st.toast(f"❌ 哎呀！「{user_input}」接不上「{last_valid_msg}」喔！", icon="🚨")
-            st.error(f"「{last_valid_msg[-1]}」跟「{user_input[0]}」讀音不合，請重新輸入！")
+            # 驗證失敗，跳出不同情境的警告
+            if can_ignore_tone:
+                st.toast("❌ 發動求生的第一擊，至少要跟上一個字同音（可換聲調）！", icon="🚨")
+            elif sos_user == current_player:
+                st.toast(f"❌ 連擊期間必須嚴格同音同調！請接續「{last_idiom[-1]}」", icon="🚨")
+            else:
+                st.toast(f"❌ 讀音不合！請接續「{last_idiom[-1]}」的同音同調字！", icon="🚨")
