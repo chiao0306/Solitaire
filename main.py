@@ -101,17 +101,43 @@ async def call_referee(req: ActionRequest):
 
 @app.post("/buy_hint")
 async def buy_hint(req: ActionRequest):
-    prompt = f"請給出一個以「{req.target_text[-1]}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
-    # 👇 這裡加上 safety_settings
-    res = model.generate_content(prompt, safety_settings=custom_safety_settings)
-    ans = res.text.strip()[:4]
-    hint_char = ans[2] if len(ans) >= 3 else ans[-1]
-    db.collection(CHAT_COLLECTION).add({
-        "room_name": req.room_name, "user_name": "Referee (AI)", 
-        "text": f"💡 第一次提示：下一句的第三個字可以是「**{hint_char}**」", 
-        "type": "referee", "hint_answer": ans, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
-    })
-    return {"status": "success"}
+    # 💡 第一階段提示：給出第三個字
+    if req.action_type == "hint_1":
+        prompt = f"請給出一個以「{req.target_text[-1]}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
+        res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+        ans = res.text.strip()[:4]
+        hint_char = ans[2] if len(ans) >= 3 else ans[-1]
+        db.collection(CHAT_COLLECTION).add({
+            "room_name": req.room_name, "user_name": "Referee (AI)", 
+            "text": f"💡 第一次提示：下一句的第三個字可以是「**{hint_char}**」", 
+            "type": "referee", "hint_answer": ans, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        return {"status": "success"}
+    
+    # 💡 第二階段提示：解釋成語意思
+    elif req.action_type == "hint_2":
+        # 去資料庫找這個玩家在這個房間「上一次」買提示時，AI 決定的解答是什麼
+        docs = db.collection(CHAT_COLLECTION)\
+                 .where("room_name", "==", req.room_name)\
+                 .where("requested_by", "==", req.user_name)\
+                 .where("type", "==", "referee")\
+                 .order_by("timestamp", direction=firestore.Query.DESCENDING).limit(1).stream()
+        
+        target_idiom = None
+        for doc in docs:
+            target_idiom = doc.to_dict().get("hint_answer")
+            
+        if target_idiom:
+            prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
+            res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+            db.collection(CHAT_COLLECTION).add({
+                "room_name": req.room_name, "user_name": "Referee (AI)", 
+                "text": f"💡 第二次提示 (意思)：\n{res.text.strip()}", 
+                "type": "referee", "hint_answer": target_idiom, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
+            })
+            return {"status": "success"}
+        else:
+            raise HTTPException(status_code=400, detail="找不到前一次的提示紀錄！")
 
 @app.post("/random_topic")
 async def random_topic(req: ActionRequest):
