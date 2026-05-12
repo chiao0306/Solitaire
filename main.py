@@ -88,15 +88,27 @@ async def system_action(req: ActionRequest):
         
     return {"status": "success"}
 
-# ====== 修改：重新開始並清空對話 (連同進入房間的通知一起刪除) ======
+# ====== 修改：重新開始 (每個玩家只保留一筆加入房間的紀錄) ======
 @app.post("/restart_game")
 async def restart_game(req: ActionRequest):
     # 抓出房間內所有對話
     docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream()
     batch = db.batch()
+    seen_users = set()
+
     for doc in docs:
-        # 💡 這次不保留了，把包含 join_room 的所有紀錄一併炸掉
-        batch.delete(doc.reference)
+        data = doc.to_dict()
+        m_type = data.get("type")
+        user_name = data.get("user_name")
+
+        # 💡 判斷邏輯：如果是 join_room 訊息，且這個人還沒被保留過，我們就放過它
+        if m_type == "join_room" and user_name not in seen_users:
+            seen_users.add(user_name)
+            # 不執行刪除，保留這筆當作角色的「存在證明」
+        else:
+            # 其他的所有對話、多餘的加入通知，全部無情刪除
+            batch.delete(doc.reference)
+
     batch.commit()
     return {"status": "success"}
 
