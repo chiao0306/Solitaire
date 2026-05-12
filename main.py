@@ -99,3 +99,14 @@ async def admin_action(req: AdminRequest):
         batch.delete(doc.reference)
     batch.commit()
     return {"status": "success"}
+    
+# ====== 把這段加在 main.py 的最下面 ======
+
+@app.get("/get_rooms")
+async def get_rooms():
+    # 💡 防護機制：只撈取最近 200 筆訊息來分析房間名稱，避免 Firebase 額度爆炸
+    docs = db.collection(CHAT_COLLECTION).select(["room_name"]).order_by("timestamp", direction=firestore.Query.DESCENDING).limit(200).stream()
+    
+    # 挑出不重複的房間名稱
+    rooms = list(set([doc.to_dict().get("room_name") for doc in docs if doc.to_dict().get("room_name")]))
+    return {"status": "success", "rooms": rooms}
