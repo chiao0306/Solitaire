@@ -114,7 +114,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        // ⚠️ 填入你的 Config
+        // ⚠️ 金鑰跟網址我幫你直接填好了！
         const firebaseConfig = { apiKey: "AIzaSyDLbh5GUsAY2vO0MnGDIWysUqdC7KN7BoM", projectId: "solitaire-495623" };
         const API_BASE = "https://solitaire-992925465322.asia-east1.run.app"; 
 
@@ -124,42 +124,37 @@
         let currentRoom = "", currentPlayer = "", currentAvatar = "😎";
         let gameState = { lastIdiom: null, currentTurn: null, sosUser: null, sosCount: 0, rejected: false };
         let chatHistory = [];
-        
-        // 💡 存放從後端抓回來的「簽到表」
         let globalRoomData = {};
 
-        // --- 現代化大廳邏輯 ---
+        // 💡 體驗升級：把手機裡存過的名字，預設塞進下拉選單
+        function renderPlayerOptions(roomPlayers = []) {
+            let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
+            // 把後端房間的人，跟手機記住的人合併起來去重複
+            let combined = [...new Set([...roomPlayers, ...savedPlayers])];
+            document.getElementById('player-list').innerHTML = combined.map(p => `<option value="${p}">`).join('');
+        }
+
         async function loadRoomsFromBackend() {
+            renderPlayerOptions(); // 一開始先渲染手機記住的名字
             try {
                 const res = await fetch(`${API_BASE}/get_rooms`);
                 if (res.ok) {
                     const result = await res.json();
-                    globalRoomData = result.data; // 例如：{"測試大廳": ["玩家A", "玩家B"]}
-                    
-                    // 把房間名稱填入下拉選單
-                    const roomList = document.getElementById('room-list');
-                    roomList.innerHTML = Object.keys(globalRoomData).map(r => `<option value="${r}">`).join('');
+                    globalRoomData = result.data; 
+                    document.getElementById('room-list').innerHTML = Object.keys(globalRoomData).map(r => `<option value="${r}">`).join('');
                 }
-            } catch(e) {
-                console.log("無法取得房間列表，可能後端仍在部署中");
-            }
+            } catch(e) { console.log("無法取得房間列表，可能後端仍在部署中"); }
         }
 
-        // 網頁一開就去抓簽到表 (只消耗 1 次讀取)
         loadRoomsFromBackend();
 
-        // 💡 連動魔法：監聽房間輸入框的變化
+        // 💡 體驗升級：選了房間後，合併名單
         document.getElementById('room-input').addEventListener('input', (e) => {
             const selectedRoom = e.target.value;
-            const playerList = document.getElementById('player-list');
-            
-            // 如果輸入的房間存在於簽到表中，就把那個房間的玩家名單填入
             if (globalRoomData[selectedRoom]) {
-                const players = globalRoomData[selectedRoom];
-                playerList.innerHTML = players.map(p => `<option value="${p}">`).join('');
+                renderPlayerOptions(globalRoomData[selectedRoom]);
             } else {
-                // 如果是新房間，名字選單清空
-                playerList.innerHTML = "";
+                renderPlayerOptions(); // 新房間就只顯示手機記住的名字
             }
         });
 
@@ -224,14 +219,12 @@
             currentAvatar = document.getElementById('avatar-input').value;
             if (!currentRoom || !currentPlayer) return alert("⚠️ 請填寫房間名稱與名字！");
 
-            // 💡 修正：直接在這裡把名字記在手機裡，方便下次不用重打
             let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
             if(!savedPlayers.includes(currentPlayer)) { 
                 savedPlayers.push(currentPlayer); 
                 localStorage.setItem('savedPlayers', JSON.stringify(savedPlayers)); 
             }
 
-            // 隱藏大廳，顯示遊戲室
             document.getElementById('lobby-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('menu-btn').style.display = 'block';
@@ -276,11 +269,11 @@
         document.getElementById('referee-btn').addEventListener('click', () => {
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
             if(!lastChat) return alert("還沒有人發言！");
-            apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫", avatar: currentAvatar, target_text: lastChat.text });
+            apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
         });
         document.getElementById('hint-btn').addEventListener('click', () => {
             if(!gameState.lastIdiom) return alert("還沒有題目！");
-            apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: "hint", text: "提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
+            apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: "hint", text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
         });
         document.getElementById('sos-btn').addEventListener('click', () => {
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
