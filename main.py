@@ -180,12 +180,12 @@ async def random_topic(req: ActionRequest):
     else:
         raise HTTPException(status_code=500, detail="AI 出題失敗，請重試！")
 
-# 💡 新增：管理員專用路由
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
     if req.admin_pwd != ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="密碼錯誤！拒絕存取。")
     
+    # 1. 刪除對話紀錄
     query = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name)
     if req.action_type == "delete_user" and req.target_user:
         query = query.where("user_name", "==", req.target_user)
@@ -194,6 +194,16 @@ async def admin_action(req: AdminRequest):
     batch = db.batch()
     for doc in docs:
         batch.delete(doc.reference)
+    
+    # 2. 💡 毀滅性清空：如果是 clear_room，連房間簽到表都要拔掉
+    if req.action_type == "clear_room":
+        doc_ref = db.collection("system_meta").document("active_rooms")
+        # 使用 firestore.DELETE_FIELD 來刪除 map 裡的特定 key
+        from google.cloud import firestore as google_firestore
+        doc_ref.update({
+            req.room_name: google_firestore.DELETE_FIELD
+        })
+        
     batch.commit()
     return {"status": "success"}
     
