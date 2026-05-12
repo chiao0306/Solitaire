@@ -31,7 +31,12 @@
         .controls { display: flex; gap: 8px; margin-bottom: 10px; }
         .controls input { margin-bottom: 0; }
         
-        /* 原生對話框樣式 (Modal) */
+        /* 歷史紀錄標籤按鈕樣式 */
+        .chip-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -10px; margin-bottom: 20px; }
+        .chip { background: #31333f; border: 1px solid #4b5563; padding: 6px 12px; border-radius: 16px; font-size: 13px; cursor: pointer; transition: 0.2s; color: #ccc; user-select: none; }
+        .chip:hover { background: #4b5563; color: white; }
+        .chip.active { background: #ff4b4b; border-color: #ff4b4b; color: white; }
+
         dialog { background: #262730; color: white; border: 1px solid #4b5563; border-radius: 12px; padding: 25px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
         dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
         .dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-size: 18px; font-weight: bold; }
@@ -49,15 +54,15 @@
         <div id="lobby-screen" class="panel">
             <h2 style="margin-top: 0; border-bottom: 1px solid #4b5563; padding-bottom: 10px;">🚪 進入遊戲大廳</h2>
             
-            <label>快速進入房間 (點擊查看歷史)</label>
-            <input type="text" id="room-input" list="room-list" placeholder="輸入或選擇房間名稱...">
-            <datalist id="room-list"></datalist>
+            <label>選擇或輸入遊戲室</label>
+            <input type="text" id="room-input" placeholder="輸入房間名稱...">
+            <div id="room-chips" class="chip-container"></div>
             
             <div style="display: flex; gap: 10px;">
                 <div style="flex: 2;">
                     <label>你的名字</label>
-                    <input type="text" id="player-input" list="player-list" placeholder="輸入名字...">
-                    <datalist id="player-list"></datalist>
+                    <input type="text" id="player-input" placeholder="輸入名字...">
+                    <div id="player-chips" class="chip-container" style="margin-top: 5px;"></div>
                 </div>
                 <div style="flex: 1;">
                     <label>選擇頭像</label>
@@ -114,7 +119,6 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
-        // ⚠️ 金鑰跟網址我幫你直接填好了！
         const firebaseConfig = { apiKey: "AIzaSyDLbh5GUsAY2vO0MnGDIWysUqdC7KN7BoM", projectId: "solitaire-495623" };
         const API_BASE = "https://solitaire-992925465322.asia-east1.run.app"; 
 
@@ -126,36 +130,62 @@
         let chatHistory = [];
         let globalRoomData = {};
 
-        // 💡 體驗升級：把手機裡存過的名字，預設塞進下拉選單
-        function renderPlayerOptions(roomPlayers = []) {
+        // 渲染玩家按鈕
+        function renderPlayerChips(roomPlayers = []) {
             let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
-            // 把後端房間的人，跟手機記住的人合併起來去重複
             let combined = [...new Set([...roomPlayers, ...savedPlayers])];
-            document.getElementById('player-list').innerHTML = combined.map(p => `<option value="${p}">`).join('');
+            const container = document.getElementById('player-chips');
+            container.innerHTML = '';
+            
+            combined.forEach(p => {
+                let chip = document.createElement('div');
+                chip.className = 'chip';
+                chip.textContent = p;
+                chip.onclick = () => {
+                    document.getElementById('player-input').value = p;
+                    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                };
+                container.appendChild(chip);
+            });
+        }
+
+        // 渲染房間按鈕
+        function renderRoomChips(rooms) {
+            const container = document.getElementById('room-chips');
+            container.innerHTML = '';
+            rooms.forEach(r => {
+                let chip = document.createElement('div');
+                chip.className = 'chip';
+                chip.textContent = r;
+                chip.onclick = () => {
+                    document.getElementById('room-input').value = r;
+                    renderPlayerChips(globalRoomData[r] || []);
+                    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                };
+                container.appendChild(chip);
+            });
         }
 
         async function loadRoomsFromBackend() {
-            renderPlayerOptions(); // 一開始先渲染手機記住的名字
+            renderPlayerChips(); 
             try {
                 const res = await fetch(`${API_BASE}/get_rooms`);
                 if (res.ok) {
                     const result = await res.json();
                     globalRoomData = result.data; 
-                    document.getElementById('room-list').innerHTML = Object.keys(globalRoomData).map(r => `<option value="${r}">`).join('');
+                    renderRoomChips(Object.keys(globalRoomData));
                 }
-            } catch(e) { console.log("無法取得房間列表，可能後端仍在部署中"); }
+            } catch(e) { console.log("無法取得房間列表"); }
         }
 
         loadRoomsFromBackend();
 
-        // 💡 體驗升級：選了房間後，合併名單
         document.getElementById('room-input').addEventListener('input', (e) => {
             const selectedRoom = e.target.value;
-            if (globalRoomData[selectedRoom]) {
-                renderPlayerOptions(globalRoomData[selectedRoom]);
-            } else {
-                renderPlayerOptions(); // 新房間就只顯示手機記住的名字
-            }
+            renderPlayerChips(globalRoomData[selectedRoom] || []);
+            document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
         });
 
         // --- 狀態引擎 ---
@@ -279,7 +309,6 @@
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
         });
 
-        // --- ⚙️ 選單與管理功能 ---
         const menuDialog = document.getElementById('menu-dialog');
         document.getElementById('menu-btn').addEventListener('click', () => menuDialog.showModal());
 
