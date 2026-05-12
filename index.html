@@ -117,7 +117,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, query, where, orderBy, onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyDLbh5GUsAY2vO0MnGDIWysUqdC7KN7BoM", projectId: "solitaire-495623" };
         const API_BASE = "https://solitaire-992925465322.asia-east1.run.app"; 
@@ -168,19 +168,30 @@
             });
         }
 
-        async function loadRoomsFromBackend() {
-            renderPlayerChips(); 
-            try {
-                const res = await fetch(`${API_BASE}/get_rooms`);
-                if (res.ok) {
-                    const result = await res.json();
-                    globalRoomData = result.data; 
+        // 💡 現代科技魔法：大廳即時雷達！
+        function listenToGlobalRooms() {
+            renderPlayerChips(); // 一開始先渲染手機自己記住的名字
+            
+            // 直接監聽 Firebase 裡的那張「全域簽到表 (active_rooms)」
+            const docRef = doc(db, "system_meta", "active_rooms");
+            
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    globalRoomData = docSnap.data(); 
+                    // 只要有任何人建立新房間，這裡就會瞬間觸發，重新把按鈕畫出來！
                     renderRoomChips(Object.keys(globalRoomData));
+                    
+                    // 如果玩家現在有在輸入框打字，保持他的搜尋狀態
+                    const currentInput = document.getElementById('room-input').value;
+                    if (currentInput && globalRoomData[currentInput]) {
+                        renderPlayerChips(globalRoomData[currentInput]);
+                    }
                 }
-            } catch(e) { console.log("無法取得房間列表"); }
+            });
         }
-
-        loadRoomsFromBackend();
+        
+        // 取代原本的 loadRoomsFromBackend();
+        listenToGlobalRooms();
 
         document.getElementById('room-input').addEventListener('input', (e) => {
             const selectedRoom = e.target.value;
