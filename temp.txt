@@ -1,0 +1,22 @@
+        // ==========================================
+        // ⚠️ 【要修改這裡 1】：填入你的 Firebase 網頁設定
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDLbh5GUsAY2vO0MnGDIWysUqdC7KN7BoM",
+            projectId: "solitaire-495623",
+        };
+
+        // ==========================================
+        // ⚠️ 【請修改】：填入你的 Cloud Run 後端網址
+        // ==========================================
+        const API_BASE = "https://solitaire-992925465322.asia-east1.run.app/"; 
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // 全域變數
+        let currentRoom = "";
+        let currentPlayer = "";
+        let currentAvatar = "😎";
+        let gameState = { lastIdiom: null, currentTurn: null, sosUser: null, sosCount: 0, rejected: false };
+        let chatHistory = [];
