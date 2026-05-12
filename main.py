@@ -52,12 +52,26 @@ async def send_chat(req: ChatRequest):
     })
     return {"status": "success"}
 
+# 引入 firestore 的 ArrayUnion 來更新陣列
+from google.cloud.firestore_v1 import ArrayUnion
+
 @app.post("/system_action")
 async def system_action(req: ActionRequest):
+    # 1. 照常儲存系統對話
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
         "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
     })
+    
+    # 💡 現代科技魔法：如果動作是「加入房間」，就去更新中控簽到表！
+    if req.action_type == "join_room":
+        # 我們建一個新的集合叫 system_meta，裡面放一張 active_rooms 文件
+        doc_ref = db.collection("system_meta").document("active_rooms")
+        # 使用 set(merge=True) 加上 ArrayUnion，確保房間存在，且名字不重複寫入
+        doc_ref.set({
+            req.room_name: ArrayUnion([req.user_name])
+        }, merge=True)
+        
     return {"status": "success"}
 
 @app.post("/call_referee")
@@ -104,9 +118,12 @@ async def admin_action(req: AdminRequest):
 
 @app.get("/get_rooms")
 async def get_rooms():
-    # 💡 防護機制：只撈取最近 200 筆訊息來分析房間名稱，避免 Firebase 額度爆炸
-    docs = db.collection(CHAT_COLLECTION).select(["room_name"]).order_by("timestamp", direction=firestore.Query.DESCENDING).limit(200).stream()
+    # 💡 現代科技魔法：直接讀取這張簽到表。花費讀取次數：永遠 1 次！
+    doc_ref = db.collection("system_meta").document("active_rooms")
+    doc = doc_ref.get()
     
-    # 挑出不重複的房間名稱
-    rooms = list(set([doc.to_dict().get("room_name") for doc in docs if doc.to_dict().get("room_name")]))
-    return {"status": "success", "rooms": rooms}
+    if doc.exists:
+        # 回傳長這樣：{"房間A": ["玩家1", "玩家2"], "房間B": ["玩家3"]}
+        return {"status": "success", "data": doc.to_dict()}
+    
+    return {"status": "success", "data": {}}
