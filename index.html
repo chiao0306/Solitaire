@@ -47,6 +47,16 @@
         .dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-size: 18px; font-weight: bold; }
         .close-btn { background: transparent; color: #ccc; width: auto; padding: 0; font-size: 20px; }
         hr { border: 0; height: 1px; background: #4b5563; margin: 20px 0; }
+        /* 💡 新增：Toast 加減分提示框與開局大按鈕的樣式 */
+        #toast-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; pointer-events: none; display: flex; flex-direction: column; gap: 10px; }
+        .toast { background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 8px; font-size: 20px; font-weight: bold; text-align: center; animation: fadeInOut 2s ease-in-out forwards; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-bottom: 4px solid #fff; }
+        .toast.success { border-bottom-color: #4CAF50; }
+        .toast.danger { border-bottom-color: #ef4444; color: #fca5a5; }
+        .toast.warning { border-bottom-color: #eab308; color: #fef08a; }
+        @keyframes fadeInOut { 0% { opacity: 0; transform: scale(0.5); } 15% { opacity: 1; transform: scale(1.1); } 30% { transform: scale(1); } 80% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.8); } }
+        
+        #start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(14, 17, 23, 0.85); border-radius: 10px; z-index: 10; backdrop-filter: blur(2px); }
+
     </style>
 </head>
 <body>
@@ -86,7 +96,17 @@
                 <div id="turn-info" style="font-weight: bold; color: #4CAF50; margin-bottom: 8px;">🟢 連線中...</div>
                 <div id="scoreboard" style="font-size: 13px; color: #ccc;">🏆 排行榜：載入中...</div>
             </div>
-            <div class="chat-box" id="chat-box"></div>
+            
+            <div style="position: relative; margin-bottom: 15px;">
+                <div class="chat-box" id="chat-box" style="margin-bottom: 0;"></div>
+                <div id="start-overlay" style="display: none;">
+                    <button class="btn-primary" id="big-random-btn" style="width: 80%; padding: 25px 15px; font-size: 18px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); background: #10b981; border-radius: 12px; line-height: 1.5;">
+                        🎲 請 AI 隨機出題<br>
+                        <span style="font-size: 14px; font-weight: normal; color: #d1fae5;">(或直接在下方輸入成語開局)</span>
+                    </button>
+                </div>
+            </div>
+            
             <div class="controls">
                 <input type="text" id="msg-input" placeholder="輸入成語...">
                 <button class="btn-primary" id="send-btn" style="width: 80px;">送出</button>
@@ -95,9 +115,10 @@
                 <button id="sos-btn" style="background: #eab308;">🆘 求生</button>
                 <button id="referee-btn" style="background: #3b82f6;">⚖️ 裁判</button>
                 <button id="hint-btn" style="background: #8b5cf6;">💡 提示</button>
-                <button id="random-btn" style="background: #10b981;">🎲 隨機出題</button>
-            </div>
+                </div>
             <button id="surrender-btn" class="btn-dark" style="width: 100%; margin-top: 5px;">🏳️ 我想不出來了 (投降)</button>
+            
+            <div id="toast-container"></div>
         </div>
     </div>
 
@@ -136,18 +157,26 @@
         let gameState = { lastIdiom: null, currentTurn: null, sosUser: null, sosCount: 0, rejected: false, isGameOver: false, alreadyJudged: false };
         let chatHistory = [];
         let globalRoomData = {};
+        let previousScores = null; // 💡 用來追蹤分數變化的全域變數
 
-        // 渲染玩家按鈕
+        // 💡 新增：產生中央加減分提示的函數
+        function showToast(msg, type) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = msg;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000); // 2秒後消失
+        }
+
         function renderPlayerChips(roomPlayers = []) {
             let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
             let combined = [...new Set([...roomPlayers, ...savedPlayers])];
             const container = document.getElementById('player-chips');
             container.innerHTML = '';
-            
             combined.forEach(p => {
                 let chip = document.createElement('div');
-                chip.className = 'chip';
-                chip.textContent = p;
+                chip.className = 'chip'; chip.textContent = p;
                 chip.onclick = () => {
                     document.getElementById('player-input').value = p;
                     container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
@@ -157,14 +186,12 @@
             });
         }
 
-        // 渲染房間按鈕
         function renderRoomChips(rooms) {
             const container = document.getElementById('room-chips');
             container.innerHTML = '';
             rooms.forEach(r => {
                 let chip = document.createElement('div');
-                chip.className = 'chip';
-                chip.textContent = r;
+                chip.className = 'chip'; chip.textContent = r;
                 chip.onclick = () => {
                     document.getElementById('room-input').value = r;
                     renderPlayerChips(globalRoomData[r] || []);
@@ -175,7 +202,6 @@
             });
         }
 
-        // 大廳即時雷達
         function listenToGlobalRooms() {
             renderPlayerChips(); 
             const docRef = doc(db, "system_meta", "active_rooms");
@@ -184,9 +210,7 @@
                     globalRoomData = docSnap.data(); 
                     renderRoomChips(Object.keys(globalRoomData));
                     const currentInput = document.getElementById('room-input').value;
-                    if (currentInput && globalRoomData[currentInput]) {
-                        renderPlayerChips(globalRoomData[currentInput]);
-                    }
+                    if (currentInput && globalRoomData[currentInput]) renderPlayerChips(globalRoomData[currentInput]);
                 }
             });
         }
@@ -204,14 +228,14 @@
             let sosUser = null, sosCount = 0;
             let lastChatUser = null, lastChatPrevSosUser = null, lastChatPrevSosCount = 0;
             let isGameOver = false; let alreadyJudged = false; let roundHints = {}; 
-        
+
             history.forEach(msg => {
                 let mType = msg.type || "chat", user = msg.user_name, text = msg.text;
                 if (user && user !== "System" && !user.includes("AI")) {
                     if (!(user in scores)) scores[user] = 50;
-                    if (!playersOrder.includes(user)) playersOrder.push(user); // 記錄講過話的玩家
+                    if (!playersOrder.includes(user)) playersOrder.push(user);
                 }
-        
+
                 if (mType === "game_over") isGameOver = true;
                 if (mType === "system" && text.includes("重新開始")) {
                     scores = {}; playersOrder = []; validIdiom = null; pendingIdiom = null; rejected = false; isGameOver = false;
@@ -228,7 +252,7 @@
                     pendingIdiom = text; rejected = false; lastChatUser = user;
                     lastChatPrevSosUser = sosUser; lastChatPrevSosCount = sosCount;
                     alreadyJudged = false; roundHints = {}; 
-        
+
                     if (sosUser === user) {
                         sosCount++;
                         if (sosCount === 3) { scores[user] += isPerfectMatch ? 20 : 10; sosUser = null; sosCount = 0; }
@@ -247,38 +271,35 @@
                     }
                 }
             });
-        
+
             let currentTurn = sosUser || (playersOrder.length > 0 ? (rejected ? lastChatUser : playersOrder[(playersOrder.indexOf(lastChatUser) + 1) % playersOrder.length]) : null);
-            
-            // 💡 導出 playersOrder 讓 UI 知道誰還沒加入戰局
             return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected, isGameOver, alreadyJudged, roundHints, playersOrder };
         }
 
         function updateUI() {
-            const turnInfo = document.getElementById('turn-info');
-            const msgInput = document.getElementById('msg-input');
-            const sendBtn = document.getElementById('send-btn');
-            const refBtn = document.getElementById('referee-btn');
-            const hintBtn = document.getElementById('hint-btn');
-            const sosBtn = document.getElementById('sos-btn');
-            const surBtn = document.getElementById('surrender-btn');
-            const rndBtn = document.getElementById('random-btn');
-        
-            // 💡 新增：組合頂部的專屬資訊字串 (房間名稱 + 頭像 + 名字)
+            const turnInfo = document.getElementById('turn-info'); const msgInput = document.getElementById('msg-input');
+            const sendBtn = document.getElementById('send-btn'); const refBtn = document.getElementById('referee-btn');
+            const hintBtn = document.getElementById('hint-btn'); const sosBtn = document.getElementById('sos-btn');
+            const surBtn = document.getElementById('surrender-btn'); 
+            const startOverlay = document.getElementById('start-overlay'); // 💡 抓取開局大按鈕遮罩
+
             const myInfoPrefix = `<div style="color: #ccc; font-size: 13px; margin-bottom: 5px;">🏠 房間：${currentRoom} | 👤 ${currentAvatar} ${currentPlayer}</div>`;
-        
+
             if (gameState.isGameOver) {
-                turnInfo.innerHTML = `${myInfoPrefix}🏁 遊戲結束！請在選單點擊重新開始。`;
-                turnInfo.style.color = "#ef4444";
+                turnInfo.innerHTML = `${myInfoPrefix}🏁 遊戲結束！請在選單點擊重新開始。`; turnInfo.style.color = "#ef4444";
                 msgInput.disabled = true; msgInput.placeholder = "遊戲已結算";
-                sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; rndBtn.disabled = true;
+                sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
+                startOverlay.style.display = "none";
                 return;
             }
-        
+
             let isMyTurn = false;
             const playerIndex = gameState.playersOrder.indexOf(currentPlayer);
             const hasStarted = chatHistory.some(m => m.type === 'chat' || (m.type === 'system' && m.text.includes("題目為")));
-        
+
+            // 💡 控制 AI 隨機出題遮罩的顯示與隱藏
+            startOverlay.style.display = (!hasStarted && !gameState.isGameOver) ? "flex" : "none";
+
             if (!hasStarted) {
                 isMyTurn = true;
             } else if (gameState.playersOrder.length === 1) {
@@ -286,30 +307,28 @@
             } else {
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
-        
+
+            // 💡 裁判按鈕全域開放：任何人都可以按，只要有成語且還沒被判過
+            let hasChat = chatHistory.some(m => m.type === 'chat');
+            refBtn.disabled = (gameState.alreadyJudged || !hasChat || gameState.isGameOver);
+
             if (isMyTurn) {
-                // 💡 修改：加入頂部資訊，並把文字改為你要的樣式
                 turnInfo.innerHTML = hasStarted ? `${myInfoPrefix}🟢 輪到你了！接續「${gameState.lastIdiom}」` : `${myInfoPrefix}🟢 尚未開局，請出題！`;
                 turnInfo.style.color = "#4CAF50";
-                msgInput.disabled = false;
-                
-                // 💡 修改：動態改變對話輸入框的 Placeholder
-                msgInput.placeholder = hasStarted ? `輪到你囉，請接「${gameState.lastIdiom}」` : "你是第一個，請出題...";
-                
-                sendBtn.disabled = false; surBtn.disabled = false; rndBtn.disabled = hasStarted;
+                msgInput.disabled = false; msgInput.placeholder = hasStarted ? `輪到你囉，請接「${gameState.lastIdiom}」` : "你是第一個，請出題...";
+                sendBtn.disabled = false; surBtn.disabled = false;
                 
                 let myHints = gameState.roundHints[currentPlayer] || 0;
-                hintBtn.disabled = (gameState.scores[currentPlayer] <= 5 || myHints >= 2);
-                let hasChat = chatHistory.some(m => m.type === 'chat');
-                refBtn.disabled = (gameState.alreadyJudged || !hasChat);
+                if (myHints === 0) { hintBtn.textContent = "💡 提示 (1/2)"; hintBtn.disabled = (gameState.scores[currentPlayer] <= 5); } 
+                else if (myHints === 1) { hintBtn.textContent = "💡 提示 (2/2)"; hintBtn.disabled = (gameState.scores[currentPlayer] <= 5); } 
+                else { hintBtn.textContent = "🚫 提示耗盡"; hintBtn.disabled = true; }
+
                 sosBtn.disabled = !!gameState.sosUser;
             } else {
-                // 💡 修改：加入頂部資訊
-                turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${gameState.currentTurn || '其他人'} 發言...`;
-                turnInfo.style.color = "gray";
-                msgInput.disabled = true;
-                msgInput.placeholder = "尚未輪到你...";
-                sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; rndBtn.disabled = true;
+                turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${gameState.currentTurn || '其他人'} 發言...`; turnInfo.style.color = "gray";
+                msgInput.disabled = true; msgInput.placeholder = "尚未輪到你...";
+                sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
+                hintBtn.textContent = "💡 提示";
             }
         }
 
@@ -329,8 +348,7 @@
 
             let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
             if(!savedPlayers.includes(currentPlayer)) { 
-                savedPlayers.push(currentPlayer); 
-                localStorage.setItem('savedPlayers', JSON.stringify(savedPlayers)); 
+                savedPlayers.push(currentPlayer); localStorage.setItem('savedPlayers', JSON.stringify(savedPlayers)); 
             }
 
             document.getElementById('lobby-screen').style.display = 'none';
@@ -351,60 +369,69 @@
                 chatBox.scrollTop = chatBox.scrollHeight;
 
                 gameState = calculateGameState(chatHistory);
+                
+                // 💡 計算分數變化，並呼叫 Toast 動畫彈窗
+                if (previousScores !== null) {
+                    let oldScore = previousScores[currentPlayer] || 50;
+                    let newScore = gameState.scores[currentPlayer] || 50;
+                    let diff = newScore - oldScore;
+                    if (diff > 0) showToast(`🎉 +${diff} 分`, "success");
+                    else if (diff < 0) showToast(`💥 ${diff} 分`, "danger");
+                }
+                previousScores = { ...gameState.scores };
+
                 let scoreHTML = Object.entries(gameState.scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
                 document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
-                
-                // 💡 呼叫 UI 防呆更新器
                 updateUI();
             });
 
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar });
         });
 
+        // 💡 監聽 Enter 鍵直接發送
+        document.getElementById('msg-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('send-btn').click(); }
+        });
+
         document.getElementById('send-btn').addEventListener('click', async () => {
             const text = document.getElementById('msg-input').value.trim();
             if (!text) return;
+            
+            let isSosFinishing = (gameState.sosUser === currentPlayer && gameState.sosCount === 2);
             let ignoreTone = (gameState.sosUser === currentPlayer && gameState.sosCount === 0);
+            
             let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: gameState.lastIdiom, ignore_tone: ignoreTone });
-            if(success) document.getElementById('msg-input').value = "";
-        });
-        
-        // 💡 新增：支援手機/電腦鍵盤按 Enter 直接發送
-        document.getElementById('msg-input').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault(); // 阻止換行等預設行為
-                document.getElementById('send-btn').click(); // 模擬點擊發送按鈕
+            if (success) {
+                document.getElementById('msg-input').value = "";
+                // 💡 判斷是否為 3 連擊的最後一擊，發送系統恭喜訊息
+                if (isSosFinishing) {
+                    apiCall('/system_action', { room_name: currentRoom, user_name: "System", action_type: "system", text: `【系統】🎉 恭喜 **${currentPlayer}** 完成 3 連擊逃脫成功！`, avatar: "" });
+                }
             }
-        })
+        });
 
         document.getElementById('referee-btn').addEventListener('click', () => {
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
             if(!lastChat) return alert("還沒有人發言！");
             apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
         });
+
         document.getElementById('hint-btn').addEventListener('click', () => {
             if(!gameState.lastIdiom) return alert("還沒有題目！");
-            
             let myHints = gameState.roundHints[currentPlayer] || 0;
             let actionType = myHints === 0 ? "hint_1" : "hint_2"; 
-            
-            apiCall('/buy_hint', { 
-                room_name: currentRoom, 
-                user_name: currentPlayer, 
-                action_type: actionType, 
-                text: "買提示", 
-                avatar: currentAvatar, 
-                target_text: gameState.lastIdiom 
-            });
+            apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
         });
+
         document.getElementById('sos-btn').addEventListener('click', () => {
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
         });
-        document.getElementById('random-btn').addEventListener('click', () => {
+
+        // 💡 綁定中間新版大按鈕的事件
+        document.getElementById('big-random-btn').addEventListener('click', () => {
             apiCall('/random_topic', { room_name: currentRoom, user_name: currentPlayer, action_type: "random", text: "請求出題", avatar: currentAvatar });
         });
         
-        // 💡 新增：投降按鈕事件
         document.getElementById('surrender-btn').addEventListener('click', () => {
             if(confirm("確定要投降並結束這場遊戲嗎？")) {
                 apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "🏳️ 舉白旗投降了！遊戲結束！", avatar: currentAvatar });
@@ -414,10 +441,8 @@
         const menuDialog = document.getElementById('menu-dialog');
         document.getElementById('menu-btn').addEventListener('click', () => menuDialog.showModal());
 
-        // 💡 修改重新開始的邏輯
         document.getElementById('btn-restart').addEventListener('click', () => {
             if(confirm("確定要清空房間所有對話並重新開始嗎？\n(大廳的玩家角色會保留)")) {
-                // 改呼叫新的 API 來物理刪除資料庫內容
                 apiCall('/restart_game', { room_name: currentRoom, user_name: "System", action_type: "restart", text: "", avatar: "" });
                 menuDialog.close();
             }
@@ -436,9 +461,9 @@
         document.getElementById('btn-clear-room').addEventListener('click', async () => {
             const pwd = document.getElementById('admin-pwd').value;
             if(!pwd) return alert("請輸入密碼！");
-            if(confirm("🧨 確定要徹底清空房間所有資料？無法復原！")) {
+            if(confirm("🧨 確定要徹底毀滅此房間？資料與角色紀錄將全部消失！")) {
                 let success = await apiCall('/admin_action', { room_name: currentRoom, admin_pwd: pwd, action_type: "clear_room" });
-                if(success) { alert("房間已清空！"); menuDialog.close(); }
+                if(success) { alert("房間已徹底毀滅！"); window.location.reload(); }
             }
         });
     </script>
