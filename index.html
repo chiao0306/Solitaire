@@ -203,26 +203,22 @@
             let validIdiom = null, pendingIdiom = null, rejected = false;
             let sosUser = null, sosCount = 0;
             let lastChatUser = null, lastChatPrevSosUser = null, lastChatPrevSosCount = 0;
-            let isGameOver = false;
-            let alreadyJudged = false;
-            let roundHints = {}; // 💡 記錄這回合大家買了幾次提示
+            let isGameOver = false; let alreadyJudged = false; let roundHints = {}; 
         
             history.forEach(msg => {
                 let mType = msg.type || "chat", user = msg.user_name, text = msg.text;
                 if (user && user !== "System" && !user.includes("AI")) {
                     if (!(user in scores)) scores[user] = 50;
-                    if (!playersOrder.includes(user)) playersOrder.push(user);
+                    if (!playersOrder.includes(user)) playersOrder.push(user); // 記錄講過話的玩家
                 }
         
                 if (mType === "game_over") isGameOver = true;
-        
                 if (mType === "system" && text.includes("重新開始")) {
                     scores = {}; playersOrder = []; validIdiom = null; pendingIdiom = null; rejected = false; isGameOver = false;
                 } else if (mType === "system" && text.includes("題目為")) {
                     let match = text.match(/「\*\*([^]+?)\*\*」/);
                     validIdiom = match ? match[1] : text.slice(-4);
-                    pendingIdiom = validIdiom; rejected = false; sosUser = null; sosCount = 0;
-                    roundHints = {}; // 💡 換題了，提示次數歸零
+                    pendingIdiom = validIdiom; rejected = false; sosUser = null; sosCount = 0; roundHints = {}; 
                 } else if (mType === "sos_start") {
                     sosUser = user; sosCount = 0;
                 } else if (mType === "chat" && user !== "System" && !user.includes("AI")) {
@@ -231,8 +227,7 @@
                     if (!rejected) validIdiom = pendingIdiom;
                     pendingIdiom = text; rejected = false; lastChatUser = user;
                     lastChatPrevSosUser = sosUser; lastChatPrevSosCount = sosCount;
-                    alreadyJudged = false;
-                    roundHints = {}; // 💡 成功接龍，提示次數歸零
+                    alreadyJudged = false; roundHints = {}; 
         
                     if (sosUser === user) {
                         sosCount++;
@@ -242,83 +237,65 @@
                     if (text.includes("✅") || text.includes("❌")) alreadyJudged = true;
                     if (text.includes("❌")) {
                         rejected = true;
-                        if (lastChatUser && scores[lastChatUser]) {
-                            scores[lastChatUser] -= 20;
-                            if (scores[lastChatUser] <= 0) isGameOver = true;
-                        }
+                        if (lastChatUser && scores[lastChatUser]) { scores[lastChatUser] -= 20; if (scores[lastChatUser] <= 0) isGameOver = true; }
                         sosUser = lastChatPrevSosUser; sosCount = lastChatPrevSosCount;
                     }
                     if (text.includes("💡") && msg.requested_by && scores[msg.requested_by]) {
                         scores[msg.requested_by] -= 5;
                         if (scores[msg.requested_by] <= 0) isGameOver = true;
-                        roundHints[msg.requested_by] = (roundHints[msg.requested_by] || 0) + 1; // 💡 記錄買了一次提示
+                        roundHints[msg.requested_by] = (roundHints[msg.requested_by] || 0) + 1; 
                     }
                 }
             });
         
             let currentTurn = sosUser || (playersOrder.length > 0 ? (rejected ? lastChatUser : playersOrder[(playersOrder.indexOf(lastChatUser) + 1) % playersOrder.length]) : null);
-            return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected, isGameOver, alreadyJudged, roundHints };
+            
+            // 💡 導出 playersOrder 讓 UI 知道誰還沒加入戰局
+            return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected, isGameOver, alreadyJudged, roundHints, playersOrder };
         }
 
         function updateUI() {
-            const turnInfo = document.getElementById('turn-info');
-            const msgInput = document.getElementById('msg-input');
-            const sendBtn = document.getElementById('send-btn');
-            const refBtn = document.getElementById('referee-btn');
-            const hintBtn = document.getElementById('hint-btn');
-            const sosBtn = document.getElementById('sos-btn');
-            const surBtn = document.getElementById('surrender-btn');
-            const rndBtn = document.getElementById('random-btn');
+            const turnInfo = document.getElementById('turn-info'); const msgInput = document.getElementById('msg-input');
+            const sendBtn = document.getElementById('send-btn'); const refBtn = document.getElementById('referee-btn');
+            const hintBtn = document.getElementById('hint-btn'); const sosBtn = document.getElementById('sos-btn');
+            const surBtn = document.getElementById('surrender-btn'); const rndBtn = document.getElementById('random-btn');
         
             if (gameState.isGameOver) {
-                turnInfo.innerHTML = "🏁 遊戲結束！請在選單點擊重新開始。";
-                turnInfo.style.color = "#ef4444";
+                turnInfo.innerHTML = "🏁 遊戲結束！請在選單點擊重新開始。"; turnInfo.style.color = "#ef4444";
                 msgInput.disabled = true; msgInput.placeholder = "遊戲已結算";
                 sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; rndBtn.disabled = true;
                 return;
             }
         
-            const isMyTurn = (gameState.currentTurn === currentPlayer || !gameState.currentTurn);
+            // 💡 自由開局與亂入機制：是你的回合，或者「你根本還沒發言過 (還沒加入排序)」就可以輸入
+            const hasJoined = gameState.playersOrder && gameState.playersOrder.includes(currentPlayer);
+            const isMyTurn = (gameState.currentTurn === currentPlayer || !gameState.currentTurn || !hasJoined);
+            
+            // 💡 判斷遊戲是否已開局 (只要有人發言過，或是AI出過題)
+            const hasStarted = chatHistory.some(m => m.type === 'chat' || (m.type === 'system' && m.text.includes("題目為")));
             
             if (isMyTurn) {
-                turnInfo.innerHTML = `🟢 輪到你了！請接續「${gameState.lastIdiom || '等待出題'}」`;
+                turnInfo.innerHTML = `🟢 輪到你了！請接續「${gameState.lastIdiom || '自由出題'}」`;
                 turnInfo.style.color = "#4CAF50";
-                msgInput.disabled = false;
-                msgInput.placeholder = "輸入成語...";
-                sendBtn.disabled = false;
-                surBtn.disabled = false;
-                rndBtn.disabled = false;
+                msgInput.disabled = false; msgInput.placeholder = gameState.lastIdiom ? "輸入成語..." : "你是第一個，請出題...";
+                sendBtn.disabled = false; surBtn.disabled = false;
                 
-                // 💡 兩階段提示按鈕控制
+                // 💡 如果遊戲已經開始，鎖定 AI 隨機出題按鈕
+                rndBtn.disabled = hasStarted;
+                
                 let myHints = gameState.roundHints[currentPlayer] || 0;
-                if (myHints === 0) {
-                    hintBtn.textContent = "💡 提示 (1/2)";
-                    hintBtn.disabled = (gameState.scores[currentPlayer] <= 5);
-                } else if (myHints === 1) {
-                    hintBtn.textContent = "💡 提示 (2/2)";
-                    hintBtn.disabled = (gameState.scores[currentPlayer] <= 5);
-                } else {
-                    hintBtn.textContent = "🚫 提示耗盡";
-                    hintBtn.disabled = true;
-                }
+                if (myHints === 0) { hintBtn.textContent = "💡 提示 (1/2)"; hintBtn.disabled = (gameState.scores[currentPlayer] <= 5); } 
+                else if (myHints === 1) { hintBtn.textContent = "💡 提示 (2/2)"; hintBtn.disabled = (gameState.scores[currentPlayer] <= 5); } 
+                else { hintBtn.textContent = "🚫 提示耗盡"; hintBtn.disabled = true; }
         
                 let hasChat = chatHistory.some(m => m.type === 'chat');
                 refBtn.disabled = (gameState.alreadyJudged || !hasChat);
                 sosBtn.disabled = !!gameState.sosUser;
             } else {
-                turnInfo.innerHTML = `⏳ 等待 ${gameState.currentTurn} 發言...`;
-                turnInfo.style.color = "gray";
-                msgInput.disabled = true;
-                msgInput.placeholder = `請等候 ${gameState.currentTurn}...`;
-                sendBtn.disabled = true;
-                refBtn.disabled = true;
-                
+                turnInfo.innerHTML = `⏳ 等待 ${gameState.currentTurn} 發言...`; turnInfo.style.color = "gray";
+                msgInput.disabled = true; msgInput.placeholder = `請等候 ${gameState.currentTurn}...`;
+                sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; rndBtn.disabled = true;
                 hintBtn.textContent = "💡 提示";
-                hintBtn.disabled = true;
-                
-                sosBtn.disabled = true;
-                surBtn.disabled = true;
-                rndBtn.disabled = true;
             }
         }
 
@@ -415,9 +392,11 @@
         const menuDialog = document.getElementById('menu-dialog');
         document.getElementById('menu-btn').addEventListener('click', () => menuDialog.showModal());
 
+        // 💡 修改重新開始的邏輯
         document.getElementById('btn-restart').addEventListener('click', () => {
-            if(confirm("確定要重新開始並清空計分板嗎？")) {
-                apiCall('/system_action', { room_name: currentRoom, user_name: "System", action_type: "system", text: "【系統】重新開始遊戲！請重新出題。", avatar: "" });
+            if(confirm("確定要清空房間所有對話並重新開始嗎？\n(大廳的玩家角色會保留)")) {
+                // 改呼叫新的 API 來物理刪除資料庫內容
+                apiCall('/restart_game', { room_name: currentRoom, user_name: "System", action_type: "restart", text: "", avatar: "" });
                 menuDialog.close();
             }
         });
