@@ -198,7 +198,6 @@
             document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
         });
 
-        // 💡 修改：狀態引擎加入遊戲結束、防呆判斷
         function calculateGameState(history) {
             let scores = {}; let playersOrder = [];
             let validIdiom = null, pendingIdiom = null, rejected = false;
@@ -206,22 +205,24 @@
             let lastChatUser = null, lastChatPrevSosUser = null, lastChatPrevSosCount = 0;
             let isGameOver = false;
             let alreadyJudged = false;
-
+            let roundHints = {}; // 💡 記錄這回合大家買了幾次提示
+        
             history.forEach(msg => {
                 let mType = msg.type || "chat", user = msg.user_name, text = msg.text;
                 if (user && user !== "System" && !user.includes("AI")) {
                     if (!(user in scores)) scores[user] = 50;
                     if (!playersOrder.includes(user)) playersOrder.push(user);
                 }
-
+        
                 if (mType === "game_over") isGameOver = true;
-
+        
                 if (mType === "system" && text.includes("重新開始")) {
                     scores = {}; playersOrder = []; validIdiom = null; pendingIdiom = null; rejected = false; isGameOver = false;
                 } else if (mType === "system" && text.includes("題目為")) {
                     let match = text.match(/「\*\*([^]+?)\*\*」/);
                     validIdiom = match ? match[1] : text.slice(-4);
                     pendingIdiom = validIdiom; rejected = false; sosUser = null; sosCount = 0;
+                    roundHints = {}; // 💡 換題了，提示次數歸零
                 } else if (mType === "sos_start") {
                     sosUser = user; sosCount = 0;
                 } else if (mType === "chat" && user !== "System" && !user.includes("AI")) {
@@ -230,8 +231,9 @@
                     if (!rejected) validIdiom = pendingIdiom;
                     pendingIdiom = text; rejected = false; lastChatUser = user;
                     lastChatPrevSosUser = sosUser; lastChatPrevSosCount = sosCount;
-                    alreadyJudged = false; // 新對話出現，重置裁判狀態
-
+                    alreadyJudged = false;
+                    roundHints = {}; // 💡 成功接龍，提示次數歸零
+        
                     if (sosUser === user) {
                         sosCount++;
                         if (sosCount === 3) { scores[user] += isPerfectMatch ? 20 : 10; sosUser = null; sosCount = 0; }
@@ -242,22 +244,22 @@
                         rejected = true;
                         if (lastChatUser && scores[lastChatUser]) {
                             scores[lastChatUser] -= 20;
-                            if (scores[lastChatUser] <= 0) isGameOver = true; // 扣到 0 分出局
+                            if (scores[lastChatUser] <= 0) isGameOver = true;
                         }
                         sosUser = lastChatPrevSosUser; sosCount = lastChatPrevSosCount;
                     }
                     if (text.includes("💡") && msg.requested_by && scores[msg.requested_by]) {
                         scores[msg.requested_by] -= 5;
-                        if (scores[msg.requested_by] <= 0) isGameOver = true; // 買提示破產出局
+                        if (scores[msg.requested_by] <= 0) isGameOver = true;
+                        roundHints[msg.requested_by] = (roundHints[msg.requested_by] || 0) + 1; // 💡 記錄買了一次提示
                     }
                 }
             });
-
+        
             let currentTurn = sosUser || (playersOrder.length > 0 ? (rejected ? lastChatUser : playersOrder[(playersOrder.indexOf(lastChatUser) + 1) % playersOrder.length]) : null);
-            return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected, isGameOver, alreadyJudged };
+            return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected, isGameOver, alreadyJudged, roundHints };
         }
 
-        // 💡 新增：統一的 UI 更新器 (防呆控制中樞)
         function updateUI() {
             const turnInfo = document.getElementById('turn-info');
             const msgInput = document.getElementById('msg-input');
@@ -267,7 +269,7 @@
             const sosBtn = document.getElementById('sos-btn');
             const surBtn = document.getElementById('surrender-btn');
             const rndBtn = document.getElementById('random-btn');
-
+        
             if (gameState.isGameOver) {
                 turnInfo.innerHTML = "🏁 遊戲結束！請在選單點擊重新開始。";
                 turnInfo.style.color = "#ef4444";
@@ -275,7 +277,7 @@
                 sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; rndBtn.disabled = true;
                 return;
             }
-
+        
             const isMyTurn = (gameState.currentTurn === currentPlayer || !gameState.currentTurn);
             
             if (isMyTurn) {
@@ -287,12 +289,21 @@
                 surBtn.disabled = false;
                 rndBtn.disabled = false;
                 
-                // 防呆：分數小於等於5分不能按提示
-                hintBtn.disabled = (gameState.scores[currentPlayer] <= 5);
-                // 防呆：如果最後一句判過了，或是沒人講過話，裁判按鈕鎖住
+                // 💡 兩階段提示按鈕控制
+                let myHints = gameState.roundHints[currentPlayer] || 0;
+                if (myHints === 0) {
+                    hintBtn.textContent = "💡 提示 (1/2)";
+                    hintBtn.disabled = (gameState.scores[currentPlayer] <= 5);
+                } else if (myHints === 1) {
+                    hintBtn.textContent = "💡 提示 (2/2)";
+                    hintBtn.disabled = (gameState.scores[currentPlayer] <= 5);
+                } else {
+                    hintBtn.textContent = "🚫 提示耗盡";
+                    hintBtn.disabled = true;
+                }
+        
                 let hasChat = chatHistory.some(m => m.type === 'chat');
                 refBtn.disabled = (gameState.alreadyJudged || !hasChat);
-                // 防呆：如果已經在發動求生了，求生按鈕鎖住
                 sosBtn.disabled = !!gameState.sosUser;
             } else {
                 turnInfo.innerHTML = `⏳ 等待 ${gameState.currentTurn} 發言...`;
@@ -301,7 +312,10 @@
                 msgInput.placeholder = `請等候 ${gameState.currentTurn}...`;
                 sendBtn.disabled = true;
                 refBtn.disabled = true;
+                
+                hintBtn.textContent = "💡 提示";
                 hintBtn.disabled = true;
+                
                 sosBtn.disabled = true;
                 surBtn.disabled = true;
                 rndBtn.disabled = true;
@@ -371,7 +385,18 @@
         });
         document.getElementById('hint-btn').addEventListener('click', () => {
             if(!gameState.lastIdiom) return alert("還沒有題目！");
-            apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: "hint", text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
+            
+            let myHints = gameState.roundHints[currentPlayer] || 0;
+            let actionType = myHints === 0 ? "hint_1" : "hint_2"; 
+            
+            apiCall('/buy_hint', { 
+                room_name: currentRoom, 
+                user_name: currentPlayer, 
+                action_type: actionType, 
+                text: "買提示", 
+                avatar: currentAvatar, 
+                target_text: gameState.lastIdiom 
+            });
         });
         document.getElementById('sos-btn').addEventListener('click', () => {
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
