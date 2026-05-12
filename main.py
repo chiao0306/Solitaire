@@ -65,11 +65,17 @@ from google.cloud.firestore_v1 import ArrayUnion
 
 @app.post("/system_action")
 async def system_action(req: ActionRequest):
-    # 1. 照常儲存系統對話
+    # 儲存動作訊息 (包含 join_room, sos_start, 以及我們要新增的 game_over)
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
         "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
     })
+    
+    if req.action_type == "join_room":
+        doc_ref = db.collection("system_meta").document("active_rooms")
+        doc_ref.set({ req.room_name: ArrayUnion([req.user_name]) }, merge=True)
+        
+    return {"status": "success"}
     
     # 💡 現代科技魔法：如果動作是「加入房間」，就去更新中控簽到表！
     if req.action_type == "join_room":
