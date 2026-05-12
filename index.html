@@ -346,6 +346,14 @@
             currentAvatar = document.getElementById('avatar-input').value;
             if (!currentRoom || !currentPlayer) return alert("⚠️ 請填寫房間名稱與名字！");
 
+            // 💡 新增：檢查名字是否已經在該房間裡 (撞名防護)
+            if (globalRoomData[currentRoom] && globalRoomData[currentRoom].includes(currentPlayer)) {
+                const confirmMsg = `⚠️ 名字撞了！「${currentPlayer}」已經在這個房間裡了喔！\n\n👉 如果你是「斷線重新連線」，請按【確定】繼續。\n👉 如果你是「新玩家」，請按【取消】並更換一個名字。`;
+                if (!confirm(confirmMsg)) {
+                    return; // 玩家按下取消，終止進入房間，留在原地改名字
+                }
+            }
+
             let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
             if(!savedPlayers.includes(currentPlayer)) { 
                 savedPlayers.push(currentPlayer); localStorage.setItem('savedPlayers', JSON.stringify(savedPlayers)); 
@@ -370,7 +378,7 @@
 
                 gameState = calculateGameState(chatHistory);
                 
-                // 💡 計算分數變化，並呼叫 Toast 動畫彈窗
+                // 計算分數變化與 Toast 動畫
                 if (previousScores !== null) {
                     let oldScore = previousScores[currentPlayer] || 50;
                     let newScore = gameState.scores[currentPlayer] || 50;
