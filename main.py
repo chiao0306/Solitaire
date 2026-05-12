@@ -88,17 +88,15 @@ async def system_action(req: ActionRequest):
         
     return {"status": "success"}
 
-# ====== 新增：重新開始並清空對話 (保留角色) ======
+# ====== 修改：重新開始並清空對話 (連同進入房間的通知一起刪除) ======
 @app.post("/restart_game")
 async def restart_game(req: ActionRequest):
     # 抓出房間內所有對話
     docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream()
     batch = db.batch()
     for doc in docs:
-        data = doc.to_dict()
-        # 💡 關鍵：只刪除對話、系統與裁判訊息，保留 "join_room" 讓角色留在大廳
-        if data.get("type") != "join_room":
-            batch.delete(doc.reference)
+        # 💡 這次不保留了，把包含 join_room 的所有紀錄一併炸掉
+        batch.delete(doc.reference)
     batch.commit()
     return {"status": "success"}
 
