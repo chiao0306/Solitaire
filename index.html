@@ -90,6 +90,7 @@
                 <button id="sos-btn" style="background: #eab308;">🆘 求生</button>
                 <button id="referee-btn" style="background: #3b82f6;">⚖️ 裁判</button>
                 <button id="hint-btn" style="background: #8b5cf6;">💡 提示</button>
+                <button id="random-btn" style="background: #10b981;">🎲 隨機出題</button>
             </div>
         </div>
     </div>
@@ -318,6 +319,18 @@
         });
         document.getElementById('sos-btn').addEventListener('click', () => {
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
+        });
+
+        // ====== 新增：AI 隨機出題按鈕監聽 ======
+        document.getElementById('random-btn').addEventListener('click', () => {
+            // 呼叫我們剛寫好的 /random_topic API
+            apiCall('/random_topic', { 
+                room_name: currentRoom, 
+                user_name: currentPlayer, 
+                action_type: "random", 
+                text: "請求出題", 
+                avatar: currentAvatar 
+            });
         });
 
         const menuDialog = document.getElementById('menu-dialog');
