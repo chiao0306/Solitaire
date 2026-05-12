@@ -125,14 +125,36 @@
         let gameState = { lastIdiom: null, currentTurn: null, sosUser: null, sosCount: 0, rejected: false };
         let chatHistory = [];
 
-        // --- 讀取 localStorage 填入下拉選單 ---
-        function loadHistory() {
-            let rooms = JSON.parse(localStorage.getItem('savedRooms') || '[]');
+        // --- 替換掉原本的 loadHistory 函數 ---
+        async function loadHistory() {
+            // 1. 名字維持使用本地記憶體 (因為名字是個人的)
             let players = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
-            document.getElementById('room-list').innerHTML = rooms.map(r => `<option value="${r}">`).join('');
             document.getElementById('player-list').innerHTML = players.map(p => `<option value="${p}">`).join('');
+            
+            // 2. 房間改為向後端請求「最近活躍的全球房間清單」
+            try {
+                // 注意：這裡是打 GET 請求，所以不需要設定 body
+                const res = await fetch(`${API_BASE}/get_rooms`);
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('room-list').innerHTML = data.rooms.map(r => `<option value="${r}">`).join('');
+                }
+            } catch(e) {
+                console.log("無法取得房間列表，可能後端仍在部署中");
+            }
         }
-        loadHistory();
+        
+        loadHistory(); // 網頁一載入就執行
+
+        function saveHistory(room, player) {
+            // 房間已經由後端統一管理，這裡我們只需要存玩家名字就好
+            let players = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
+            if(!players.includes(player)) { 
+                players.push(player); 
+                localStorage.setItem('savedPlayers', JSON.stringify(players)); 
+            }
+            loadHistory();
+        }
 
         function saveHistory(room, player) {
             let rooms = JSON.parse(localStorage.getItem('savedRooms') || '[]');
