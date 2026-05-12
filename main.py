@@ -25,6 +25,14 @@ if not firebase_admin._apps:
 db = firestore.client()
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 model = genai.GenerativeModel('gemini-3.1-flash-lite')
+
+custom_safety_settings = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+]
+
 CHAT_COLLECTION = "chat_messages"
 ADMIN_PASSWORD = "0306" # 👈 你的管理員密碼
 
@@ -77,7 +85,8 @@ async def system_action(req: ActionRequest):
 @app.post("/call_referee")
 async def call_referee(req: ActionRequest):
     prompt = f"請判斷「{req.target_text}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
-    res = model.generate_content(prompt)
+    # 👇 這裡加上 safety_settings
+    res = model.generate_content(prompt, safety_settings=custom_safety_settings)
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": "Referee (AI)", "text": res.text.strip(), 
         "type": "referee", "timestamp": firestore.SERVER_TIMESTAMP
@@ -87,7 +96,8 @@ async def call_referee(req: ActionRequest):
 @app.post("/buy_hint")
 async def buy_hint(req: ActionRequest):
     prompt = f"請給出一個以「{req.target_text[-1]}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
-    res = model.generate_content(prompt)
+    # 👇 這裡加上 safety_settings
+    res = model.generate_content(prompt, safety_settings=custom_safety_settings)
     ans = res.text.strip()[:4]
     hint_char = ans[2] if len(ans) >= 3 else ans[-1]
     db.collection(CHAT_COLLECTION).add({
@@ -96,6 +106,24 @@ async def buy_hint(req: ActionRequest):
         "type": "referee", "hint_answer": ans, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
     })
     return {"status": "success"}
+
+@app.post("/random_topic")
+async def random_topic(req: ActionRequest):
+    prompt = "請給出一個常見的繁體中文四字成語，只需回傳成語本身。"
+    res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+    
+    if res and res.text:
+        idiom = res.text.strip()[:4]
+        db.collection(CHAT_COLLECTION).add({
+            "room_name": req.room_name, 
+            "user_name": "System", 
+            "text": f"【系統】遊戲開始！題目為「**{idiom}**」", 
+            "type": "system", 
+            "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        return {"status": "success"}
+    else:
+        raise HTTPException(status_code=500, detail="AI 出題失敗，請重試！")
 
 # 💡 新增：管理員專用路由
 @app.post("/admin_action")
