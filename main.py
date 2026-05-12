@@ -116,16 +116,25 @@ async def buy_hint(req: ActionRequest):
     
     # 💡 第二階段提示：解釋成語意思
     elif req.action_type == "hint_2":
-        # 去資料庫找這個玩家在這個房間「上一次」買提示時，AI 決定的解答是什麼
+        # 💡 避開 Firebase 討厭的索引限制：我們只做簡單篩選，把資料抓出來後用 Python 自己找最後一個
         docs = db.collection(CHAT_COLLECTION)\
                  .where("room_name", "==", req.room_name)\
                  .where("requested_by", "==", req.user_name)\
                  .where("type", "==", "referee")\
-                 .order_by("timestamp", direction=firestore.Query.DESCENDING).limit(1).stream()
+                 .stream()
         
-        target_idiom = None
+        # 把有提示解答的紀錄挑出來
+        hint_records = []
         for doc in docs:
-            target_idiom = doc.to_dict().get("hint_answer")
+            data = doc.to_dict()
+            if data.get("hint_answer") and data.get("timestamp"):
+                hint_records.append(data)
+                
+        target_idiom = None
+        if hint_records:
+            # 用 Python 自己根據時間排序，抓最後一筆 (也就是最新買的那個)
+            hint_records.sort(key=lambda x: x.get("timestamp"))
+            target_idiom = hint_records[-1].get("hint_answer")
             
         if target_idiom:
             prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
