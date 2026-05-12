@@ -88,6 +88,20 @@ async def system_action(req: ActionRequest):
         
     return {"status": "success"}
 
+# ====== 新增：重新開始並清空對話 (保留角色) ======
+@app.post("/restart_game")
+async def restart_game(req: ActionRequest):
+    # 抓出房間內所有對話
+    docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream()
+    batch = db.batch()
+    for doc in docs:
+        data = doc.to_dict()
+        # 💡 關鍵：只刪除對話、系統與裁判訊息，保留 "join_room" 讓角色留在大廳
+        if data.get("type") != "join_room":
+            batch.delete(doc.reference)
+    batch.commit()
+    return {"status": "success"}
+
 @app.post("/call_referee")
 async def call_referee(req: ActionRequest):
     prompt = f"請判斷「{req.target_text}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
