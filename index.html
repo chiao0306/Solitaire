@@ -3,43 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>成語接龍 - 真即時版</title>
+    <title>成語接龍🐉</title>
     <style>
-        body { font-family: sans-serif; background-color: #0e1117; color: #fafafa; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center;}
+        /* --- 全局樣式 --- */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0e1117; color: #fafafa; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center;}
         .container { width: 100%; max-width: 600px; }
-        .chat-box { background: #262730; border-radius: 10px; padding: 15px; height: 350px; overflow-y: auto; margin-bottom: 15px; }
-        .msg { margin-bottom: 10px; padding: 10px; border-radius: 8px; background: #31333f; font-size: 15px;}
-        .msg.system { background: #1e3a8a; color: #93c5fd; }
-        .msg.referee { background: #3f6212; color: #d9f99d; }
-        .controls { display: flex; gap: 8px; margin-bottom: 10px; }
-        input { flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #4b5563; background: #0e1117; color: white;}
-        button { padding: 10px; border-radius: 5px; border: none; font-weight: bold; cursor: pointer; color: white; }
-        .btn-send { background: #ff4b4b; min-width: 70px; }
-        .btn-sos { background: #eab308; flex: 1; }
-        .btn-ref { background: #3b82f6; flex: 1; }
-        .btn-hint { background: #8b5cf6; flex: 1; }
-        .status-panel { background: #262730; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+        h1 { text-align: center; margin-bottom: 20px; color: #fff; }
+        
+        /* --- 面板共用樣式 --- */
+        .panel { background: #262730; border-radius: 12px; padding: 25px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        
+        /* --- 輸入框與按鈕 --- */
+        label { display: block; font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #ccc; }
+        input[type="text"], select { width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #4b5563; background: #0e1117; color: white; font-size: 16px; box-sizing: border-box; }
+        input[type="text"]:focus, select:focus { outline: none; border-color: #ff4b4b; }
+        
+        button { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; color: white; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        .btn-primary { background: #ff4b4b; }
+        .btn-primary:hover { background: #ff3333; }
+        
+        /* --- 遊戲室專用樣式 --- */
+        #game-screen { display: none; /* 一開始隱藏遊戲室 */ }
+        .chat-box { background: #1a1c23; border-radius: 10px; padding: 15px; height: 380px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #31333f; }
+        .msg { margin-bottom: 12px; padding: 12px; border-radius: 10px; background: #31333f; font-size: 15px; line-height: 1.4; }
+        .msg.system { background: rgba(30, 58, 138, 0.4); border-left: 4px solid #3b82f6; color: #93c5fd; }
+        .msg.referee { background: rgba(63, 98, 18, 0.4); border-left: 4px solid #84cc16; color: #d9f99d; }
+        .msg.join { background: transparent; color: #888; font-size: 13px; text-align: center; padding: 5px; }
+        
+        .controls { display: flex; gap: 10px; margin-bottom: 10px; }
+        .controls input { margin-bottom: 0; }
+        .btn-send { background: #ff4b4b; width: 80px; }
+        .btn-sos { background: #eab308; }
+        .btn-ref { background: #3b82f6; }
+        .btn-hint { background: #8b5cf6; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2 style="text-align: center; margin-top: 0;">成語接龍🐉</h2>
+        <h1>成語接龍🐉</h1>
         
-        <div class="status-panel">
-            <div id="turn-info" style="font-weight: bold; color: #4CAF50; margin-bottom: 8px;">🟢 系統載入中...</div>
-            <div id="scoreboard" style="font-size: 13px; color: #ccc;">🏆 排行榜：載入中</div>
+        <div id="lobby-screen" class="panel">
+            <h2 style="margin-top: 0; border-bottom: 1px solid #4b5563; padding-bottom: 10px;">🚪 進入遊戲大廳</h2>
+            
+            <label>快速進入房間</label>
+            <input type="text" id="room-input" placeholder="輸入房間名稱...">
+            
+            <div style="display: flex; gap: 10px;">
+                <div style="flex: 2;">
+                    <label>你的名字</label>
+                    <input type="text" id="player-input" placeholder="輸入名字...">
+                </div>
+                <div style="flex: 1;">
+                    <label>選擇頭像</label>
+                    <select id="avatar-input">
+                        <option value="😎">😎</option><option value="🥴">🥴</option><option value="🤩">🤩</option>
+                        <option value="🤓">🤓</option><option value="🥸">🥸</option><option value="😇">😇</option>
+                        <option value="😉">😉</option><option value="👧">👧</option><option value="👦">👦</option>
+                        <option value="👩">👩</option><option value="👨">👨</option><option value="👱‍♀️">👱‍♀️</option>
+                    </select>
+                </div>
+            </div>
+            
+            <button class="btn-primary" id="join-btn">🚀 確認進入</button>
         </div>
 
-        <div class="chat-box" id="chat-box"></div>
+        <div id="game-screen">
+            <div class="panel" style="padding: 15px; margin-bottom: 15px;">
+                <div id="turn-info" style="font-weight: bold; color: #4CAF50; margin-bottom: 8px;">🟢 連線中...</div>
+                <div id="scoreboard" style="font-size: 13px; color: #ccc;">🏆 排行榜：載入中...</div>
+            </div>
 
-        <div class="controls">
-            <input type="text" id="msg-input" placeholder="輸入成語...">
-            <button class="btn-send" id="send-btn">送出</button>
-        </div>
-        <div class="controls">
-            <button class="btn-sos" id="sos-btn">🆘 求生</button>
-            <button class="btn-ref" id="referee-btn">⚖️ 裁判</button>
-            <button class="btn-hint" id="hint-btn">💡 提示</button>
+            <div class="chat-box" id="chat-box"></div>
+
+            <div class="controls">
+                <input type="text" id="msg-input" placeholder="輸入成語...">
+                <button class="btn-send" id="send-btn">送出</button>
+            </div>
+            <div class="controls">
+                <button class="btn-sos" id="sos-btn">🆘 求生</button>
+                <button class="btn-ref" id="referee-btn">⚖️ 裁判</button>
+                <button class="btn-hint" id="hint-btn">💡 提示</button>
+            </div>
         </div>
     </div>
 
@@ -57,21 +102,21 @@
         };
 
         // ==========================================
-        // ⚠️ 【要修改這裡 2】：填入你部署完 Cloud Run 後拿到的網址
+        // ⚠️ 【請修改】：填入你的 Cloud Run 後端網址
         // ==========================================
         const API_BASE = "https://solitaire-992925465322.asia-east1.run.app/"; 
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         
-        const currentRoom = "大廳";
-        const currentPlayer = "玩家1"; // 測試用寫死
-        const avatar = "😎";
-
+        // 全域變數
+        let currentRoom = "";
+        let currentPlayer = "";
+        let currentAvatar = "😎";
         let gameState = { lastIdiom: null, currentTurn: null, sosUser: null, sosCount: 0, rejected: false };
         let chatHistory = [];
 
-        // 狀態引擎 (翻譯自 Python)
+        // --- 狀態引擎 ---
         function calculateGameState(history) {
             let scores = {}; let playersOrder = [];
             let validIdiom = null, pendingIdiom = null, rejected = false;
@@ -118,35 +163,7 @@
             return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected };
         }
 
-        // Firebase 零延遲監聽
-        const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"));
-        onSnapshot(q, (snapshot) => {
-            const chatBox = document.getElementById('chat-box');
-            chatBox.innerHTML = ""; chatHistory = [];
-
-            snapshot.forEach((doc) => {
-                const msg = doc.data(); chatHistory.push(msg);
-                let cssClass = msg.type === "system" ? "system" : (msg.type === "referee" ? "referee" : "");
-                chatBox.innerHTML += `<div class="msg ${cssClass}"><strong>${msg.avatar || ''} ${msg.user_name}:</strong> ${msg.text}</div>`;
-            });
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            gameState = calculateGameState(chatHistory);
-            
-            let scoreHTML = Object.entries(gameState.scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
-            document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
-            
-            const turnInfo = document.getElementById('turn-info');
-            if(gameState.currentTurn === currentPlayer || !gameState.currentTurn) {
-                turnInfo.innerHTML = `🟢 輪到你了！請接續「${gameState.lastIdiom || '等待出題'}」`;
-                turnInfo.style.color = "#4CAF50";
-            } else {
-                turnInfo.innerHTML = `⏳ 等待 ${gameState.currentTurn} 發言...`;
-                turnInfo.style.color = "gray";
-            }
-        });
-
-        // 按鈕 API 呼叫 (整合防呆與報錯)
+        // --- 共用 API 呼叫函數 ---
         async function apiCall(endpoint, bodyData) {
             try {
                 const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -154,34 +171,103 @@
                     body: JSON.stringify(bodyData)
                 });
                 if (!res.ok) {
-                    const err = await res.json(); alert("錯誤：" + err.detail); return false;
+                    const err = await res.json(); alert("系統提示：" + err.detail); return false;
                 }
                 return true;
-            } catch(e) { alert("連線後端失敗！請確認 Cloud Run 網址正確。"); return false; }
+            } catch(e) { alert("連線後端失敗！請確認網路狀態。"); return false; }
         }
 
+        // ==========================================
+        // 🚪 大廳邏輯：點擊「確認進入」
+        // ==========================================
+        document.getElementById('join-btn').addEventListener('click', async () => {
+            const roomInput = document.getElementById('room-input').value.trim();
+            const playerInput = document.getElementById('player-input').value.trim();
+            
+            if (!roomInput || !playerInput) {
+                alert("⚠️ 請完整填寫房間名稱與你的名字！");
+                return;
+            }
+
+            // 1. 儲存玩家資訊
+            currentRoom = roomInput;
+            currentPlayer = playerInput;
+            currentAvatar = document.getElementById('avatar-input').value;
+
+            // 2. 切換畫面 (隱藏大廳，顯示遊戲室)
+            document.getElementById('lobby-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'block';
+
+            // 3. 啟動 Firebase 監聽器 (只有進房間後才開始監聽)
+            const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"));
+            onSnapshot(q, (snapshot) => {
+                const chatBox = document.getElementById('chat-box');
+                chatBox.innerHTML = ""; chatHistory = [];
+
+                snapshot.forEach((doc) => {
+                    const msg = doc.data(); chatHistory.push(msg);
+                    let cssClass = "";
+                    if (msg.type === "system") cssClass = "system";
+                    else if (msg.type === "referee") cssClass = "referee";
+                    else if (msg.type === "join_room") cssClass = "join";
+                    
+                    let prefix = (msg.type === "chat" || msg.type === "join_room" || msg.type === "sos_start") 
+                                 ? `<strong>${msg.avatar || ''} ${msg.user_name}:</strong> ` : "";
+                    
+                    chatBox.innerHTML += `<div class="msg ${cssClass}">${prefix}${msg.text}</div>`;
+                });
+                chatBox.scrollTop = chatBox.scrollHeight;
+
+                // 更新計分板與狀態
+                gameState = calculateGameState(chatHistory);
+                let scoreHTML = Object.entries(gameState.scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
+                document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
+                
+                const turnInfo = document.getElementById('turn-info');
+                if(gameState.currentTurn === currentPlayer || !gameState.currentTurn) {
+                    turnInfo.innerHTML = `🟢 輪到你了！請接續「${gameState.lastIdiom || '等待出題'}」`;
+                    turnInfo.style.color = "#4CAF50";
+                } else {
+                    turnInfo.innerHTML = `⏳ 等待 ${gameState.currentTurn} 發言...`;
+                    turnInfo.style.color = "gray";
+                }
+            });
+
+            // 4. 發送「加入房間」通知給後端
+            apiCall('/system_action', { 
+                room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", 
+                text: "加入了房間 👋", avatar: currentAvatar 
+            });
+        });
+
+        // ==========================================
+        // 🎮 遊戲室邏輯：按鈕事件綁定
+        // ==========================================
         document.getElementById('send-btn').addEventListener('click', async () => {
-            const text = document.getElementById('msg-input').value;
+            const text = document.getElementById('msg-input').value.trim();
             if (!text) return;
             let ignoreTone = (gameState.sosUser === currentPlayer && gameState.sosCount === 0);
             
-            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar, last_idiom: gameState.lastIdiom, ignore_tone: ignoreTone });
-            if(success) document.getElementById('msg-input').value = "";
+            let success = await apiCall('/send_chat', { 
+                room_name: currentRoom, user_name: currentPlayer, text: text, 
+                avatar: currentAvatar, last_idiom: gameState.lastIdiom, ignore_tone: ignoreTone 
+            });
+            if(success) document.getElementById('msg-input').value = ""; // 成功才清空
         });
 
         document.getElementById('referee-btn').addEventListener('click', () => {
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
             if(!lastChat) return alert("還沒有人發言！");
-            apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar, target_text: lastChat.text });
+            apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
         });
 
         document.getElementById('hint-btn').addEventListener('click', () => {
             if(!gameState.lastIdiom) return alert("還沒有題目！");
-            apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: "hint", text: "買提示", avatar, target_text: gameState.lastIdiom });
+            apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: "hint", text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
         });
         
         document.getElementById('sos-btn').addEventListener('click', () => {
-            apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar });
+            apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
         });
     </script>
 </body>
