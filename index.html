@@ -17,7 +17,9 @@
         
         button { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; color: white; transition: 0.2s; }
         button:active { transform: scale(0.98); }
+        /* 💡 新增：鎖定按鈕的樣式 */
         button:disabled { background: #374151 !important; color: #9ca3af !important; cursor: not-allowed; border: none; }
+        
         .btn-primary { background: #ff4b4b; } .btn-primary:hover { background: #ff3333; }
         .btn-dark { background: #31333f; border: 1px solid #4b5563; }
         .btn-danger { background: #dc2626; }
@@ -28,11 +30,13 @@
         .msg.system { background: rgba(30, 58, 138, 0.4); border-left: 4px solid #3b82f6; color: #93c5fd; }
         .msg.referee { background: rgba(63, 98, 18, 0.4); border-left: 4px solid #84cc16; color: #d9f99d; }
         .msg.join { background: transparent; color: #888; font-size: 13px; text-align: center; padding: 5px; }
-        .msg.game_over { background: rgba(220, 38, 38, 0.2); border: 1px dashed #dc2626; color: #fca5a5; text-align: center; }
+        /* 💡 新增：遊戲結束訊息樣式 */
+        .msg.game_over { background: rgba(220, 38, 38, 0.2); border: 1px dashed #dc2626; color: #fca5a5; text-align: center; font-weight: bold; }
         
         .controls { display: flex; gap: 8px; margin-bottom: 10px; }
         .controls input { margin-bottom: 0; }
         
+        /* 歷史紀錄標籤按鈕樣式 */
         .chip-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -10px; margin-bottom: 20px; }
         .chip { background: #31333f; border: 1px solid #4b5563; padding: 6px 12px; border-radius: 16px; font-size: 13px; cursor: pointer; transition: 0.2s; color: #ccc; user-select: none; }
         .chip:hover { background: #4b5563; color: white; }
@@ -54,9 +58,11 @@
         
         <div id="lobby-screen" class="panel">
             <h2 style="margin-top: 0; border-bottom: 1px solid #4b5563; padding-bottom: 10px;">🚪 進入遊戲大廳</h2>
+            
             <label>選擇或輸入遊戲室</label>
             <input type="text" id="room-input" placeholder="輸入房間名稱...">
             <div id="room-chips" class="chip-container"></div>
+            
             <div style="display: flex; gap: 10px;">
                 <div style="flex: 2;">
                     <label>你的名字</label>
@@ -64,10 +70,11 @@
                     <div id="player-chips" class="chip-container" style="margin-top: 5px;"></div>
                 </div>
                 <div style="flex: 1;">
-                    <label>頭像</label>
+                    <label>選擇頭像</label>
                     <select id="avatar-input">
                         <option value="😎">😎</option><option value="🥴">🥴</option><option value="🤩">🤩</option>
                         <option value="🤓">🤓</option><option value="🥸">🥸</option><option value="😇">😇</option>
+                        <option value="😉">😉</option><option value="👧">👧</option><option value="👦">👦</option>
                     </select>
                 </div>
             </div>
@@ -81,30 +88,38 @@
             </div>
             <div class="chat-box" id="chat-box"></div>
             <div class="controls">
-                <input type="text" id="msg-input" placeholder="等待中...">
+                <input type="text" id="msg-input" placeholder="輸入成語...">
                 <button class="btn-primary" id="send-btn" style="width: 80px;">送出</button>
             </div>
             <div class="controls">
                 <button id="sos-btn" style="background: #eab308;">🆘 求生</button>
                 <button id="referee-btn" style="background: #3b82f6;">⚖️ 裁判</button>
                 <button id="hint-btn" style="background: #8b5cf6;">💡 提示</button>
-                <button id="random-btn" style="background: #10b981;">🎲 隨機</button>
+                <button id="random-btn" style="background: #10b981;">🎲 隨機出題</button>
             </div>
-            <button id="surrender-btn" class="btn-dark" style="width: 100%; background: #4b5563; margin-top: 5px;">🏳️ 我想不出來了 (投降)</button>
+            <button id="surrender-btn" class="btn-dark" style="width: 100%; margin-top: 5px;">🏳️ 我想不出來了 (投降)</button>
         </div>
     </div>
 
     <dialog id="menu-dialog">
         <div class="dialog-header">
-            <span>⚙️ 遊戲選單</span>
+            <span>⚙️ 遊戲選單與管理</span>
             <button class="close-btn" onclick="document.getElementById('menu-dialog').close()">✖</button>
         </div>
+        
         <button class="btn-dark" id="btn-restart" style="margin-bottom: 10px;">🔄 重新開始 (清空計分板)</button>
         <button class="btn-dark" onclick="window.location.reload()" style="margin-bottom: 10px;">🚪 返回大廳</button>
+        <button class="btn-dark" onclick="alert('請見 GitHub 上的 README 說明書！')">📖 遊戲規則</button>
+        
         <hr>
-        <div style="color: #ef4444; font-weight: bold; margin-bottom: 10px;">🚨 管理員區域</div>
-        <input type="password" id="admin-pwd" placeholder="輸入管理員密碼">
-        <button class="btn-danger" id="btn-clear-room">🧨 徹底清空房間</button>
+        <div style="color: #ef4444; font-weight: bold; margin-bottom: 10px;">🚨 管理員危險區域</div>
+        <input type="password" id="admin-pwd" placeholder="輸入管理員密碼 (0306)">
+        
+        <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+            <input type="text" id="target-user" placeholder="要刪除的玩家名稱" style="margin-bottom: 0;">
+            <button class="btn-danger" id="btn-del-user" style="width: 80px;">刪除</button>
+        </div>
+        <button class="btn-danger" id="btn-clear-room">🧨 毀滅式清空房間</button>
     </dialog>
 
     <script type="module">
@@ -118,11 +133,72 @@
         const db = getFirestore(app);
         
         let currentRoom = "", currentPlayer = "", currentAvatar = "😎";
-        let gameState = { scores: {}, lastIdiom: null, currentTurn: null, isGameOver: false, alreadyJudged: false };
+        let gameState = { lastIdiom: null, currentTurn: null, sosUser: null, sosCount: 0, rejected: false, isGameOver: false, alreadyJudged: false };
         let chatHistory = [];
         let globalRoomData = {};
 
-        // --- 核心邏輯：狀態引擎 ---
+        // 渲染玩家按鈕
+        function renderPlayerChips(roomPlayers = []) {
+            let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
+            let combined = [...new Set([...roomPlayers, ...savedPlayers])];
+            const container = document.getElementById('player-chips');
+            container.innerHTML = '';
+            
+            combined.forEach(p => {
+                let chip = document.createElement('div');
+                chip.className = 'chip';
+                chip.textContent = p;
+                chip.onclick = () => {
+                    document.getElementById('player-input').value = p;
+                    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                };
+                container.appendChild(chip);
+            });
+        }
+
+        // 渲染房間按鈕
+        function renderRoomChips(rooms) {
+            const container = document.getElementById('room-chips');
+            container.innerHTML = '';
+            rooms.forEach(r => {
+                let chip = document.createElement('div');
+                chip.className = 'chip';
+                chip.textContent = r;
+                chip.onclick = () => {
+                    document.getElementById('room-input').value = r;
+                    renderPlayerChips(globalRoomData[r] || []);
+                    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                };
+                container.appendChild(chip);
+            });
+        }
+
+        // 大廳即時雷達
+        function listenToGlobalRooms() {
+            renderPlayerChips(); 
+            const docRef = doc(db, "system_meta", "active_rooms");
+            onSnapshot(docRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    globalRoomData = docSnap.data(); 
+                    renderRoomChips(Object.keys(globalRoomData));
+                    const currentInput = document.getElementById('room-input').value;
+                    if (currentInput && globalRoomData[currentInput]) {
+                        renderPlayerChips(globalRoomData[currentInput]);
+                    }
+                }
+            });
+        }
+        listenToGlobalRooms();
+
+        document.getElementById('room-input').addEventListener('input', (e) => {
+            const selectedRoom = e.target.value;
+            renderPlayerChips(globalRoomData[selectedRoom] || []);
+            document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
+        });
+
+        // 💡 修改：狀態引擎加入遊戲結束、防呆判斷
         function calculateGameState(history) {
             let scores = {}; let playersOrder = [];
             let validIdiom = null, pendingIdiom = null, rejected = false;
@@ -131,10 +207,9 @@
             let isGameOver = false;
             let alreadyJudged = false;
 
-            history.forEach((msg, index) => {
+            history.forEach(msg => {
                 let mType = msg.type || "chat", user = msg.user_name, text = msg.text;
-                
-                if (user && !["System", "Referee (AI)"].includes(user)) {
+                if (user && user !== "System" && !user.includes("AI")) {
                     if (!(user in scores)) scores[user] = 50;
                     if (!playersOrder.includes(user)) playersOrder.push(user);
                 }
@@ -149,31 +224,31 @@
                     pendingIdiom = validIdiom; rejected = false; sosUser = null; sosCount = 0;
                 } else if (mType === "sos_start") {
                     sosUser = user; sosCount = 0;
-                } else if (mType === "chat" && !["System", "Referee (AI)"].includes(user)) {
+                } else if (mType === "chat" && user !== "System" && !user.includes("AI")) {
                     let targetForBonus = rejected ? validIdiom : pendingIdiom;
                     let isPerfectMatch = (targetForBonus && text && targetForBonus.slice(-1) === text[0]);
                     if (!rejected) validIdiom = pendingIdiom;
                     pendingIdiom = text; rejected = false; lastChatUser = user;
                     lastChatPrevSosUser = sosUser; lastChatPrevSosCount = sosCount;
-                    alreadyJudged = false; // 有新發言，重置裁判狀態
+                    alreadyJudged = false; // 新對話出現，重置裁判狀態
 
                     if (sosUser === user) {
                         sosCount++;
                         if (sosCount === 3) { scores[user] += isPerfectMatch ? 20 : 10; sosUser = null; sosCount = 0; }
                     } else { scores[user] += isPerfectMatch ? 20 : 10; sosUser = null; sosCount = 0; }
                 } else if (mType === "referee") {
-                    if (text.includes("✅") || text.includes("❌")) alreadyJudged = true; // 標記這句話判過了
+                    if (text.includes("✅") || text.includes("❌")) alreadyJudged = true;
                     if (text.includes("❌")) {
                         rejected = true;
                         if (lastChatUser && scores[lastChatUser]) {
                             scores[lastChatUser] -= 20;
-                            if (scores[lastChatUser] <= 0) isGameOver = true;
+                            if (scores[lastChatUser] <= 0) isGameOver = true; // 扣到 0 分出局
                         }
                         sosUser = lastChatPrevSosUser; sosCount = lastChatPrevSosCount;
                     }
                     if (text.includes("💡") && msg.requested_by && scores[msg.requested_by]) {
                         scores[msg.requested_by] -= 5;
-                        if (scores[msg.requested_by] <= 0) isGameOver = true;
+                        if (scores[msg.requested_by] <= 0) isGameOver = true; // 買提示破產出局
                     }
                 }
             });
@@ -182,7 +257,7 @@
             return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected, isGameOver, alreadyJudged };
         }
 
-        // --- UI 更新邏輯 (含防呆) ---
+        // 💡 新增：統一的 UI 更新器 (防呆控制中樞)
         function updateUI() {
             const turnInfo = document.getElementById('turn-info');
             const msgInput = document.getElementById('msg-input');
@@ -193,16 +268,14 @@
             const surBtn = document.getElementById('surrender-btn');
             const rndBtn = document.getElementById('random-btn');
 
-            // 1. 處理遊戲結束
             if (gameState.isGameOver) {
-                turnInfo.innerHTML = "🏁 遊戲已結算！請點選選單重新開始";
+                turnInfo.innerHTML = "🏁 遊戲結束！請在選單點擊重新開始。";
                 turnInfo.style.color = "#ef4444";
-                msgInput.disabled = true; msgInput.placeholder = "遊戲結束";
-                sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
+                msgInput.disabled = true; msgInput.placeholder = "遊戲已結算";
+                sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; rndBtn.disabled = true;
                 return;
             }
 
-            // 2. 判斷是否輪到自己
             const isMyTurn = (gameState.currentTurn === currentPlayer || !gameState.currentTurn);
             
             if (isMyTurn) {
@@ -212,11 +285,14 @@
                 msgInput.placeholder = "輸入成語...";
                 sendBtn.disabled = false;
                 surBtn.disabled = false;
+                rndBtn.disabled = false;
                 
-                // 💡 提示按鈕防呆：分數不夠不能按
+                // 防呆：分數小於等於5分不能按提示
                 hintBtn.disabled = (gameState.scores[currentPlayer] <= 5);
-                // 💡 裁判按鈕防呆：如果最後一句判過了，或是沒人講話，就鎖住
-                refBtn.disabled = gameState.alreadyJudged || chatHistory.filter(m=>m.type==='chat').length === 0;
+                // 防呆：如果最後一句判過了，或是沒人講過話，裁判按鈕鎖住
+                let hasChat = chatHistory.some(m => m.type === 'chat');
+                refBtn.disabled = (gameState.alreadyJudged || !hasChat);
+                // 防呆：如果已經在發動求生了，求生按鈕鎖住
                 sosBtn.disabled = !!gameState.sosUser;
             } else {
                 turnInfo.innerHTML = `⏳ 等待 ${gameState.currentTurn} 發言...`;
@@ -228,6 +304,7 @@
                 hintBtn.disabled = true;
                 sosBtn.disabled = true;
                 surBtn.disabled = true;
+                rndBtn.disabled = true;
             }
         }
 
@@ -239,33 +316,40 @@
             } catch(e) { alert("連線後端失敗！"); return false; }
         }
 
-        // --- 事件綁定 ---
         document.getElementById('join-btn').addEventListener('click', async () => {
             currentRoom = document.getElementById('room-input').value.trim();
             currentPlayer = document.getElementById('player-input').value.trim();
             currentAvatar = document.getElementById('avatar-input').value;
-            if (!currentRoom || !currentPlayer) return alert("⚠️ 請填寫房間與名字！");
+            if (!currentRoom || !currentPlayer) return alert("⚠️ 請填寫房間名稱與名字！");
+
+            let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
+            if(!savedPlayers.includes(currentPlayer)) { 
+                savedPlayers.push(currentPlayer); 
+                localStorage.setItem('savedPlayers', JSON.stringify(savedPlayers)); 
+            }
 
             document.getElementById('lobby-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('menu-btn').style.display = 'block';
 
-            // 即時監聽對話
             const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"));
             onSnapshot(q, (snapshot) => {
                 const chatBox = document.getElementById('chat-box');
                 chatBox.innerHTML = ""; chatHistory = [];
+
                 snapshot.forEach((doc) => {
                     const msg = doc.data(); chatHistory.push(msg);
-                    let cssClass = msg.type || "";
+                    let cssClass = msg.type === "system" ? "system" : (msg.type === "referee" ? "referee" : (msg.type === "join_room" ? "join" : (msg.type === "game_over" ? "game_over" : "")));
                     let prefix = ["chat", "join_room", "sos_start"].includes(msg.type) ? `<strong>${msg.avatar || ''} ${msg.user_name}:</strong> ` : "";
                     chatBox.innerHTML += `<div class="msg ${cssClass}">${prefix}${msg.text}</div>`;
                 });
                 chatBox.scrollTop = chatBox.scrollHeight;
+
                 gameState = calculateGameState(chatHistory);
-                
                 let scoreHTML = Object.entries(gameState.scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
                 document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
+                
+                // 💡 呼叫 UI 防呆更新器
                 updateUI();
             });
 
@@ -276,61 +360,59 @@
             const text = document.getElementById('msg-input').value.trim();
             if (!text) return;
             let ignoreTone = (gameState.sosUser === currentPlayer && gameState.sosCount === 0);
-            if(await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: gameState.lastIdiom, ignore_tone: ignoreTone })) {
-                document.getElementById('msg-input').value = "";
-            }
+            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: gameState.lastIdiom, ignore_tone: ignoreTone });
+            if(success) document.getElementById('msg-input').value = "";
         });
 
         document.getElementById('referee-btn').addEventListener('click', () => {
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
+            if(!lastChat) return alert("還沒有人發言！");
             apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
         });
-
         document.getElementById('hint-btn').addEventListener('click', () => {
+            if(!gameState.lastIdiom) return alert("還沒有題目！");
             apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: "hint", text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
         });
-
-        document.getElementById('random-btn').addEventListener('click', () => {
-            apiCall('/random_topic', { room_name: currentRoom, user_name: currentPlayer, action_type: "random", text: "請求出題", avatar: currentAvatar });
-        });
-
         document.getElementById('sos-btn').addEventListener('click', () => {
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
         });
-
+        document.getElementById('random-btn').addEventListener('click', () => {
+            apiCall('/random_topic', { room_name: currentRoom, user_name: currentPlayer, action_type: "random", text: "請求出題", avatar: currentAvatar });
+        });
+        
+        // 💡 新增：投降按鈕事件
         document.getElementById('surrender-btn').addEventListener('click', () => {
             if(confirm("確定要投降並結束這場遊戲嗎？")) {
                 apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "🏳️ 舉白旗投降了！遊戲結束！", avatar: currentAvatar });
             }
         });
 
-        // 大廳標籤邏輯
-        function renderPlayerChips(roomPlayers = []) {
-            const container = document.getElementById('player-chips');
-            container.innerHTML = '';
-            [...new Set([...roomPlayers, ...JSON.parse(localStorage.getItem('savedPlayers')||'[]')])].forEach(p => {
-                let chip = document.createElement('div'); chip.className = 'chip'; chip.textContent = p;
-                chip.onclick = () => { document.getElementById('player-input').value = p; container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); chip.classList.add('active'); };
-                container.appendChild(chip);
-            });
-        }
-        function renderRoomChips(rooms) {
-            const container = document.getElementById('room-chips'); container.innerHTML = '';
-            rooms.forEach(r => {
-                let chip = document.createElement('div'); chip.className = 'chip'; chip.textContent = r;
-                chip.onclick = () => { document.getElementById('room-input').value = r; renderPlayerChips(globalRoomData[r]||[]); container.querySelectorAll('.chip').forEach(c=>c.classList.remove('active')); chip.classList.add('active'); };
-                container.appendChild(chip);
-            });
-        }
-        onSnapshot(doc(db, "system_meta", "active_rooms"), (snap) => { if(snap.exists()){ globalRoomData=snap.data(); renderRoomChips(Object.keys(globalRoomData)); }});
-
-        // 選單邏輯
         const menuDialog = document.getElementById('menu-dialog');
         document.getElementById('menu-btn').addEventListener('click', () => menuDialog.showModal());
+
         document.getElementById('btn-restart').addEventListener('click', () => {
-            if(confirm("重開將清空積分，確定？")) {
+            if(confirm("確定要重新開始並清空計分板嗎？")) {
                 apiCall('/system_action', { room_name: currentRoom, user_name: "System", action_type: "system", text: "【系統】重新開始遊戲！請重新出題。", avatar: "" });
                 menuDialog.close();
+            }
+        });
+
+        document.getElementById('btn-del-user').addEventListener('click', async () => {
+            const targetUser = document.getElementById('target-user').value.trim();
+            const pwd = document.getElementById('admin-pwd').value;
+            if(!targetUser || !pwd) return alert("請輸入密碼與玩家名稱！");
+            if(confirm(`確定刪除 ${targetUser} 的紀錄？`)) {
+                let success = await apiCall('/admin_action', { room_name: currentRoom, admin_pwd: pwd, action_type: "delete_user", target_user: targetUser });
+                if(success) { alert("刪除成功！"); menuDialog.close(); }
+            }
+        });
+
+        document.getElementById('btn-clear-room').addEventListener('click', async () => {
+            const pwd = document.getElementById('admin-pwd').value;
+            if(!pwd) return alert("請輸入密碼！");
+            if(confirm("🧨 確定要徹底清空房間所有資料？無法復原！")) {
+                let success = await apiCall('/admin_action', { room_name: currentRoom, admin_pwd: pwd, action_type: "clear_room" });
+                if(success) { alert("房間已清空！"); menuDialog.close(); }
             }
         });
     </script>
