@@ -264,49 +264,48 @@
             const surBtn = document.getElementById('surrender-btn');
             const rndBtn = document.getElementById('random-btn');
         
+            // 💡 新增：組合頂部的專屬資訊字串 (房間名稱 + 頭像 + 名字)
+            const myInfoPrefix = `<div style="color: #ccc; font-size: 13px; margin-bottom: 5px;">🏠 房間：${currentRoom} | 👤 ${currentAvatar} ${currentPlayer}</div>`;
+        
             if (gameState.isGameOver) {
-                turnInfo.innerHTML = "🏁 遊戲結束！請在選單點擊重新開始。";
+                turnInfo.innerHTML = `${myInfoPrefix}🏁 遊戲結束！請在選單點擊重新開始。`;
                 turnInfo.style.color = "#ef4444";
                 msgInput.disabled = true; msgInput.placeholder = "遊戲已結算";
                 sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; rndBtn.disabled = true;
                 return;
             }
         
-            // 💡 判斷是否輪到自己 (升級版邏輯)
             let isMyTurn = false;
             const playerIndex = gameState.playersOrder.indexOf(currentPlayer);
             const hasStarted = chatHistory.some(m => m.type === 'chat' || (m.type === 'system' && m.text.includes("題目為")));
         
             if (!hasStarted) {
-                // A. 尚未開局：所有人都可以出題
                 isMyTurn = true;
             } else if (gameState.playersOrder.length === 1) {
-                // B. 只有一人出題：除了那個人，其他人都能搶第二棒
                 isMyTurn = (playerIndex === -1); 
             } else {
-                // C. 已有兩人以上：嚴格輪流 (若沒在名單內，則不能插嘴，除非是特殊開局)
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
         
             if (isMyTurn) {
-                turnInfo.innerHTML = hasStarted ? `🟢 輪到你了！接續「${gameState.lastIdiom}」` : "🟢 尚未開局，請出題！";
+                // 💡 修改：加入頂部資訊，並把文字改為你要的樣式
+                turnInfo.innerHTML = hasStarted ? `${myInfoPrefix}🟢 輪到你了！接續「${gameState.lastIdiom}」` : `${myInfoPrefix}🟢 尚未開局，請出題！`;
                 turnInfo.style.color = "#4CAF50";
                 msgInput.disabled = false;
-                msgInput.placeholder = "輸入成語...";
-                sendBtn.disabled = false;
-                surBtn.disabled = false;
                 
-                // 💡 只有完全沒人發言的「空房間」才能按隨機出題
-                rndBtn.disabled = hasStarted;
+                // 💡 修改：動態改變對話輸入框的 Placeholder
+                msgInput.placeholder = hasStarted ? `輪到你囉，請接「${gameState.lastIdiom}」` : "你是第一個，請出題...";
                 
-                // 提示與裁判邏輯保持原樣
+                sendBtn.disabled = false; surBtn.disabled = false; rndBtn.disabled = hasStarted;
+                
                 let myHints = gameState.roundHints[currentPlayer] || 0;
                 hintBtn.disabled = (gameState.scores[currentPlayer] <= 5 || myHints >= 2);
                 let hasChat = chatHistory.some(m => m.type === 'chat');
                 refBtn.disabled = (gameState.alreadyJudged || !hasChat);
                 sosBtn.disabled = !!gameState.sosUser;
             } else {
-                turnInfo.innerHTML = `⏳ 等待 ${gameState.currentTurn || '其他人'} 發言...`;
+                // 💡 修改：加入頂部資訊
+                turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${gameState.currentTurn || '其他人'} 發言...`;
                 turnInfo.style.color = "gray";
                 msgInput.disabled = true;
                 msgInput.placeholder = "尚未輪到你...";
@@ -369,6 +368,14 @@
             let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: gameState.lastIdiom, ignore_tone: ignoreTone });
             if(success) document.getElementById('msg-input').value = "";
         });
+        
+        // 💡 新增：支援手機/電腦鍵盤按 Enter 直接發送
+        document.getElementById('msg-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // 阻止換行等預設行為
+                document.getElementById('send-btn').click(); // 模擬點擊發送按鈕
+            }
+        })
 
         document.getElementById('referee-btn').addEventListener('click', () => {
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
