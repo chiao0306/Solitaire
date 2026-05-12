@@ -224,7 +224,14 @@
             currentAvatar = document.getElementById('avatar-input').value;
             if (!currentRoom || !currentPlayer) return alert("⚠️ 請填寫房間名稱與名字！");
 
-            saveHistory(currentRoom, currentPlayer);
+            // 💡 修正：直接在這裡把名字記在手機裡，方便下次不用重打
+            let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
+            if(!savedPlayers.includes(currentPlayer)) { 
+                savedPlayers.push(currentPlayer); 
+                localStorage.setItem('savedPlayers', JSON.stringify(savedPlayers)); 
+            }
+
+            // 隱藏大廳，顯示遊戲室
             document.getElementById('lobby-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('menu-btn').style.display = 'block';
