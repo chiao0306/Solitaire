@@ -185,20 +185,30 @@
             setTimeout(() => toast.remove(), 2000); // 2秒後消失
         }
 
-        function renderPlayerChips(roomPlayersMap = {}) {
+        function renderPlayerChips(roomPlayersData = {}) {
             const container = document.getElementById('player-chips');
             container.innerHTML = '';
-            const players = Object.keys(roomPlayersMap); // 💡 現在是 Map 結構
+            
+            // 💡 容錯處理：判斷 Firebase 傳來的是舊版清單 (Array) 還是新版名片夾 (Map)
+            let players = [];
+            let isMap = false;
+            
+            if (Array.isArray(roomPlayersData)) {
+                players = roomPlayersData; // 舊版格式 ["玩家A", "玩家B"]
+            } else if (typeof roomPlayersData === 'object' && roomPlayersData !== null) {
+                players = Object.keys(roomPlayersData); // 新版格式 {"玩家A": "😎", "玩家B": "🤩"}
+                isMap = true;
+            }
             
             players.forEach(p => {
                 let chip = document.createElement('div');
                 chip.className = 'chip'; chip.textContent = p;
                 chip.onclick = () => {
                     document.getElementById('player-input').value = p;
-                    // ✨ 核心需求：點了角色，自動載入他上次用的頭像
-                    const lastAvatar = roomPlayersMap[p];
-                    if (lastAvatar) document.getElementById('avatar-input').value = lastAvatar;
-                    
+                    // 自動載入上次用的頭像 (僅限新版結構)
+                    if (isMap && roomPlayersData[p]) {
+                        document.getElementById('avatar-input').value = roomPlayersData[p];
+                    }
                     container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                     chip.classList.add('active');
                 };
@@ -405,11 +415,22 @@
             currentAvatar = document.getElementById('avatar-input').value;
             if (!currentRoom || !currentPlayer) return alert("⚠️ 請填寫房間名稱與名字！");
 
-            // 💡 新增：檢查名字是否已經在該房間裡 (撞名防護)
-            if (globalRoomData[currentRoom] && globalRoomData[currentRoom].includes(currentPlayer)) {
+            // 💡 修正：相容新舊資料結構的撞名檢查，避免進不去遊戲
+            let roomData = globalRoomData[currentRoom];
+            let isNameTaken = false;
+            
+            if (roomData) {
+                if (Array.isArray(roomData)) {
+                    isNameTaken = roomData.includes(currentPlayer); // 舊版檢查法
+                } else {
+                    isNameTaken = Object.keys(roomData).includes(currentPlayer); // 新版檢查法
+                }
+            }
+
+            if (isNameTaken) {
                 const confirmMsg = `⚠️ 名字撞了！「${currentPlayer}」已經在這個房間裡了喔！\n\n👉 如果你是「斷線重新連線」，請按【確定】繼續。\n👉 如果你是「新玩家」，請按【取消】並更換一個名字。`;
                 if (!confirm(confirmMsg)) {
-                    return; // 玩家按下取消，終止進入房間，留在原地改名字
+                    return; // 玩家按下取消，終止進入房間
                 }
             }
 
@@ -436,7 +457,6 @@
                     let msgClass = msg.type || "chat";
                     if (!isSystem) msgClass += isSelf ? " self" : " other";
 
-                    // 組合訊息內容
                     let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar} ${msg.user_name}</div>` : "";
                     chatBox.innerHTML += `
                         <div class="msg-wrapper ${wrapperClass}">
@@ -449,7 +469,6 @@
 
                 gameState = calculateGameState(chatHistory);
                 
-                // 計算分數變化與 Toast 動畫
                 if (previousScores !== null) {
                     let oldScore = previousScores[currentPlayer] || 50;
                     let newScore = gameState.scores[currentPlayer] || 50;
