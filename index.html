@@ -40,12 +40,24 @@
         .msg.self { background: #056162; color: white; border-bottom-right-radius: 2px; }
         .msg.other { background: #31333f; color: white; border-bottom-left-radius: 2px; }
         
-        /* 系統與特殊狀態 */
-        .msg.system, .msg.join, .msg.game_over { background: transparent; color: #888; font-size: 13px; text-align: center; border: none; max-width: 100%; }
-        .msg.referee { background: rgba(63, 98, 18, 0.4); border-left: 4px solid #84cc16; color: #d9f99d; align-self: center; text-align: center; }
+        /* 💡 放大玩家發文的訊息框 (大約 1.5 倍) */
+        .msg.self, .msg.other { 
+            font-size: 22px; 
+            padding: 15px 22px; 
+        }
         
-        /* ✨ 需求：換調求生改為黃色 */
-        .msg.sos_start { background: #eab308 !important; color: #000 !important; font-weight: bold; align-self: center; border: none; }
+        /* 不同角色的背景色保持不變 */
+        .msg.self { background: #056162; color: white; border-bottom-right-radius: 2px; }
+        .msg.other { background: #31333f; color: white; border-bottom-left-radius: 2px; }
+        
+        /* 系統與特殊狀態 (維持原本 15px 的大小) */
+        .msg.system, .msg.join, .msg.game_over { background: transparent; color: #888; font-size: 13px; text-align: center; border: none; max-width: 100%; }
+        .msg.referee { background: rgba(63, 98, 18, 0.4); border-left: 4px solid #84cc16; color: #d9f99d; align-self: center; text-align: center; font-size: 15px; }
+        
+        /* ✨ 特殊大色塊狀態：逃生、3連擊成功、裁判退件提示 */
+        .msg.sos_start { background: #eab308 !important; color: #000 !important; font-weight: bold; align-self: center; border: none; font-size: 15px; }
+        .msg.combo-success { background: #10b981 !important; color: #fff !important; font-weight: bold; align-self: center; border: none; font-size: 15px; }
+        .msg.retry-prompt { background: #ef4444 !important; color: #fff !important; font-weight: bold; align-self: center; border: none; font-size: 15px; margin-top: -5px; }
 
         .msg-info { font-size: 11px; margin-bottom: 4px; color: #aaa; }
         
@@ -448,21 +460,62 @@
                 const chatBox = document.getElementById('chat-box');
                 chatBox.innerHTML = ""; chatHistory = [];
 
+                // 💡 追蹤變數：用來記憶裁判判錯時，要「退回」哪一個成語
+                let currentValidIdiom = null;
+                let currentPendingIdiom = null;
+                let currentRejected = false;
+
                 snapshot.forEach((doc) => {
                     const msg = doc.data(); chatHistory.push(msg);
                     const isSelf = msg.user_name === currentPlayer;
                     const isSystem = ["system", "join_room", "game_over", "sos_start", "referee"].includes(msg.type);
                     
+                    let mType = msg.type || "chat";
+                    
+                    // 💡 更新題目追蹤狀態
+                    if (mType === "system" && msg.text.includes("題目為")) {
+                        let match = msg.text.match(/「\*\*([^]+?)\*\*」/);
+                        currentValidIdiom = match ? match[1] : msg.text.slice(-4);
+                        currentPendingIdiom = currentValidIdiom; currentRejected = false;
+                    } else if (mType === "chat" && msg.user_name !== "System" && !msg.user_name.includes("AI")) {
+                        if (!currentRejected) currentValidIdiom = currentPendingIdiom;
+                        currentPendingIdiom = msg.text; currentRejected = false;
+                    } else if (mType === "referee" && msg.text.includes("❌")) {
+                        currentRejected = true;
+                    }
+
                     let wrapperClass = isSystem ? "system" : (isSelf ? "self" : "other");
                     let msgClass = msg.type || "chat";
                     if (!isSystem) msgClass += isSelf ? " self" : " other";
 
-                    let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar} ${msg.user_name}</div>` : "";
+                    let displayText = msg.text;
+                    
+                    // ✨ 修復 1：顯示加入房間與發動求生的玩家名稱與頭像
+                    if (mType === "join_room" || mType === "sos_start") {
+                        displayText = `${msg.avatar || '😎'} ${msg.user_name} ${msg.text}`;
+                    }
+                    
+                    // ✨ 修復 3：判斷 3 連擊成功，套用專屬綠色色塊
+                    if (mType === "system" && msg.text.includes("3 連擊逃脫成功")) {
+                        msgClass += " combo-success";
+                    }
+
+                    let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar || '😎'} ${msg.user_name}</div>` : "";
+                    
                     chatBox.innerHTML += `
                         <div class="msg-wrapper ${wrapperClass}">
                             ${infoHtml}
-                            <div class="msg ${msgClass}">${msg.text}</div>
+                            <div class="msg ${msgClass}">${displayText}</div>
                         </div>`;
+                        
+                    // ✨ 修復 2：如果被裁判退件，底下自動追加一行紅色重接提示色塊
+                    if (mType === "referee" && msg.text.includes("❌")) {
+                        let retryIdiom = currentValidIdiom || "自由出題";
+                        chatBox.innerHTML += `
+                            <div class="msg-wrapper system">
+                                <div class="msg retry-prompt">🚨 判定失敗！請退回重接「${retryIdiom}」</div>
+                            </div>`;
+                    }
                 });
 
                 chatBox.scrollTop = chatBox.scrollHeight;
