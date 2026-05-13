@@ -102,7 +102,7 @@
             <div id="room-chips" class="chip-container"></div>
             
             <div class="turn-settings-box">
-                <div class="turn-settings-row">
+                <div id="lobby-setup-row" class="turn-settings-row">
                     <input type="checkbox" id="lobby-turn-cb">
                     <label for="lobby-turn-cb">🏁 開啟回合制比賽</label>
                     <select id="lobby-rounds-sel" style="width: auto; padding: 6px; margin: 0; display: none; font-size: 14px; flex: 1;">
@@ -111,7 +111,7 @@
                         <option value="25">25 回合</option><option value="30">30 回合</option>
                     </select>
                 </div>
-                <div id="lobby-turn-status" style="font-size: 12px; color: #fca5a5; margin-top: 8px; display: none;">🔒 已存在的房間無法在此更改規則，將套用原設定。</div>
+                <div id="lobby-turn-status" style="font-size: 15px; font-weight: bold; color: #fbbf24; display: none;"></div>
             </div>
             
             <div style="display: flex; gap: 10px;">
@@ -207,7 +207,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, query, where, orderBy, onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, query, where, orderBy, onSnapshot, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyDLbh5GUsAY2vO0MnGDIWysUqdC7KN7BoM", projectId: "solitaire-495623" };
         const API_BASE = "https://solitaire-992925465322.asia-east1.run.app"; 
@@ -297,23 +297,36 @@
             });
         }
 
-        document.getElementById('room-input').addEventListener('input', (e) => {
+        document.getElementById('room-input').addEventListener('input', async (e) => {
             const selectedRoom = e.target.value.trim();
             const isExistingRoom = selectedRoom && globalRoomData[selectedRoom];
             
-            // ✨ 如果房間已存在，反灰大廳的回合制設定，並顯示提示
-            const turnCb = document.getElementById('lobby-turn-cb');
-            const turnSel = document.getElementById('lobby-rounds-sel');
+            const setupRow = document.getElementById('lobby-setup-row');
             const turnStatus = document.getElementById('lobby-turn-status');
             
             if (isExistingRoom) {
-                turnCb.disabled = true;
-                turnSel.disabled = true;
+                // 是既有房間：隱藏勾選框，顯示讀取狀態
+                setupRow.style.display = 'none';
                 turnStatus.style.display = 'block';
+                turnStatus.innerHTML = "⏳ 讀取房間狀態中...";
+                turnStatus.style.color = "#9ca3af";
+                
+                // 動態讀取已經存在的房間回合設定
+                const snap = await getDoc(doc(db, "room_states", selectedRoom));
+                if (snap.exists()) {
+                    let data = snap.data();
+                    if (data.maxRounds > 0) {
+                        turnStatus.innerHTML = `🏁 房間模式：回合制 (${data.maxRounds} 回合)`;
+                        turnStatus.style.color = '#fbbf24';
+                    } else {
+                        turnStatus.innerHTML = `♾️ 房間模式：無限制 (一般模式)`;
+                        turnStatus.style.color = '#9ca3af';
+                    }
+                }
                 renderPlayerChips(globalRoomData[selectedRoom]);
             } else {
-                turnCb.disabled = false;
-                turnSel.disabled = false;
+                // 是新房間：顯示勾選框，隱藏狀態文字
+                setupRow.style.display = 'flex';
                 turnStatus.style.display = 'none';
                 renderPlayerChips([]);
             }
@@ -322,7 +335,7 @@
                 document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
             }
         });
-
+        
         function updateUI() {
             const turnInfo = document.getElementById('turn-info'); 
             const msgInput = document.getElementById('msg-input');
@@ -353,6 +366,27 @@
             let roundHints = gameState.roundHints || {};
             
             const hasStarted = !!gameState.lastIdiom || !!gameState.pendingIdiom;
+
+            // ✨ 倒數三回合畫面中央提醒邏輯
+            if (gameState.maxRounds > 0 && gameState.trackedPlayers && gameState.trackedPlayers.length > 0) {
+                let remaining = gameState.maxRounds - gameState.currentRound;
+                // 當前輪到開局第一人，且進入最後 3 回合 (remaining === 3, 2, 1)
+                if (gameState.currentTurn === gameState.trackedPlayers[0] && remaining <= 3 && remaining > 0) {
+                    // 防止同一回合重複跳出
+                    if (window.lastAlertedRound !== gameState.currentRound) {
+                        window.lastAlertedRound = gameState.currentRound;
+                        
+                        // 利用現有的 Toast 系統客製化超大字體與較長的停留時間
+                        const container = document.getElementById('toast-container');
+                        const toast = document.createElement('div');
+                        toast.className = 'toast warning'; 
+                        toast.innerHTML = `<div style="font-size: 32px; font-weight: 900; padding: 10px;">🚨 倒數 ${remaining} 回合 🚨</div>`;
+                        toast.style.animationDuration = "3.5s"; // 讓它在畫面中間停留久一點
+                        container.appendChild(toast);
+                        setTimeout(() => toast.remove(), 3500); 
+                    }
+                }
+            }
 
             startOverlay.style.display = (!hasStarted && !gameState.isGameOver) ? "flex" : "none";
 
