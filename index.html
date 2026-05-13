@@ -683,16 +683,17 @@
             }
         });
         
-        // 💡 全螢幕必殺技動畫主程式
+        // 💡 全螢幕必殺技動畫主程式 (2x2 田字型排版)
         function triggerFlashyEffect(userName, text) {
             const overlay = document.getElementById('idiom-overlay');
             overlay.style.display = 'flex';
-            // 寫入上方人名，與下方裝成語的橫向容器
+            
+            // 💡 關鍵修改：將原本的 display:flex 改成 display:grid，並設定為兩欄 (1fr 1fr)
             overlay.innerHTML = `
-                <div style="color:#fff; font-size:28px; position:absolute; top:25%; font-weight:bold; letter-spacing: 3px;">
+                <div style="color:#fff; font-size:28px; position:absolute; top:20%; font-weight:bold; letter-spacing: 3px;">
                     👤 ${userName} 使出...
                 </div>
-                <div id="idiom-flex" style="display:flex; gap: 15px;"></div>
+                <div id="idiom-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px 40px; justify-items: center; align-items: center; margin-top: 30px;"></div>
             `;
             
             // 一個字一個字產生，每個間隔 0.5 秒
@@ -700,12 +701,13 @@
                 setTimeout(() => {
                     const charDiv = document.createElement('div');
                     charDiv.className = 'idiom-char animate-char';
+                    charDiv.style.lineHeight = "1"; // 確保上下間距緊湊
                     charDiv.textContent = char;
-                    document.getElementById('idiom-flex').appendChild(charDiv);
+                    document.getElementById('idiom-grid').appendChild(charDiv);
                 }, i * 500); 
             });
 
-            // ✨ 全場強制暫停：把輸入框跟按鈕暫時鎖死
+            // 全場強制暫停：把輸入框跟按鈕暫時鎖死
             const input = document.getElementById('msg-input');
             const btn = document.getElementById('send-btn');
             const oldInputState = input.disabled;
