@@ -450,11 +450,40 @@
             document.getElementById('menu-btn').style.display = 'block';
 
             // ✨ 通道 1：監聽「房間狀態」，負責計分與介面更新 (極低消耗)
+            let hasShownGameOver = false; // 💡 防止結算視窗重複跳出的開關
             const stateRef = doc(db, "room_states", currentRoom);
+            
             onSnapshot(stateRef, (docSnap) => {
                 if (docSnap.exists()) {
                     let newState = docSnap.data();
                     
+                    // 🏆 結算邏輯：如果遊戲結束且還沒跳過視窗
+                    if (newState.isGameOver && !hasShownGameOver) {
+                        hasShownGameOver = true; 
+
+                        if (newState.surrenderUser) {
+                            // 情況 A：有人投降
+                            showModalAlert(`🏳️ 遊戲結算\n\n${newState.surrenderUser} 接不出來，舉白旗投降了！`);
+                        } else {
+                            // 情況 B：有人分數歸零 (顯示排名)
+                            let scoreEntries = Object.entries(newState.scores || {});
+                            scoreEntries.sort((a, b) => b[1] - a[1]); // 分數高排到低
+                            
+                            let rankingList = scoreEntries.map((e, index) => {
+                                let medal = index === 0 ? "🥇" : (index === 1 ? "🥈" : (index === 2 ? "🥉" : "👤"));
+                                return `${medal} 第 ${index + 1} 名：${e[0]} (${e[1]}分)`;
+                            }).join("\n");
+
+                            showModalAlert(`🏁 遊戲結算：有人分數歸零了！\n\n【最終排名紀錄】\n${rankingList}`);
+                        }
+                    }
+                    
+                    // 當遊戲重新開始（isGameOver 變回 false）時，重置這個開關
+                    if (!newState.isGameOver) {
+                        hasShownGameOver = false;
+                    }
+
+                    // --- 以下是原本處理分數變化跳字 (Toast) 的邏輯 ---
                     if (previousScores !== null) {
                         let pendingToasts = [];
                         let oldScores = previousScores || {};
@@ -467,12 +496,8 @@
                             else if (diff < 0) pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
                         }
                         
-                        // ✨ 終極修復：不再依賴時間差！直接看這回合是不是剛打出 4 字成語
-                        let willAnimate = false;
                         let newIdiom = newState.pendingIdiom;
-                        if (newIdiom && newIdiom !== previousPendingIdiom && newIdiom.length === 4) {
-                            willAnimate = true; // 發現 4 字成語，確認有動畫要播！
-                        }
+                        let willAnimate = (newIdiom && newIdiom !== previousPendingIdiom && newIdiom.length === 4);
                         
                         let toastDelay = willAnimate ? 3200 : 0; 
                         setTimeout(() => {
@@ -481,7 +506,7 @@
                     }
                     
                     previousScores = { ...(newState.scores || {}) };
-                    previousPendingIdiom = newState.pendingIdiom; // 💡 記住這次的成語，供下次比對
+                    previousPendingIdiom = newState.pendingIdiom;
                     gameState = newState;
 
                     let scores = gameState.scores || {};
@@ -490,7 +515,7 @@
                     updateUI();
                 } else {
                     // 如果房間剛開還沒紀錄，建立一個空的暫存狀態
-                    gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {} };
+                    gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: False, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {} };
                     updateUI();
                 }
             });
@@ -622,7 +647,8 @@
         
         document.getElementById('surrender-btn').addEventListener('click', async () => {
             if(await showModalAlert("確定要投降並結束這場遊戲嗎？", true)) {
-                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "🏳️ 舉白旗投降了！遊戲結束！", avatar: currentAvatar });
+                // 這裡的 text 內容會被後端的邏輯覆蓋掉，所以傳空的沒關係，主要是 action_type 要對
+                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "", avatar: currentAvatar });
             }
         });
 
