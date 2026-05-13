@@ -389,27 +389,28 @@ async def revoke_chat(req: ActionRequest):
     if state["scores"][req.user_name] <= 0:
         state["isGameOver"] = True
 
-    # 4. 狀態回退技巧：直接利用系統原有的 rejected 機制
-    # 這樣系統會自動把「要接的成語」退回上一個，並且把回合還給該玩家！
+    # === 替換從這裡開始 ===
+
+    # 4. 刪除資料庫中的那筆發言實體 (改用 Python 排序，避開 Firebase 複合索引報錯)
+    docs = list(db.collection(CHAT_COLLECTION)\
+        .where("room_name", "==", req.room_name)\
+        .where("user_name", "==", req.user_name)\
+        .where("type", "==", "chat")\
+        .stream())
+        
+    valid_docs = [d for d in docs if d.to_dict().get("timestamp") is not None]
+    if valid_docs:
+        # 在 Python 端按時間降序排序，拿最新的一筆
+        valid_docs.sort(key=lambda d: d.to_dict().get("timestamp"), reverse=True)
+        db.collection(CHAT_COLLECTION).document(valid_docs[0].id).delete()
+
+    # 5. 確認刪除沒問題後，才把扣分的狀態正式存入資料庫 (改變順序，確保安全)
     state["rejected"] = True
-    
-    # 恢復玩家可能正在進行的求生狀態
     state["sosUser"] = state.get("lastChatPrevSosUser")
     state["sosCount"] = state.get("lastChatPrevSosCount")
 
     update_current_turn(state)
     save_room_state(req.room_name, state)
-
-    # 5. 刪除資料庫中的那筆發言實體 (找該玩家在該房間的最新一筆 chat)
-    docs = list(db.collection(CHAT_COLLECTION)\
-        .where("room_name", "==", req.room_name)\
-        .where("user_name", "==", req.user_name)\
-        .where("type", "==", "chat")\
-        .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-        .limit(1).stream())
-        
-    if docs:
-        db.collection(CHAT_COLLECTION).document(docs[0].id).delete()
 
     # 6. 發布系統廣播，讓畫面顯示收回紀錄
     db.collection(CHAT_COLLECTION).add({
