@@ -190,28 +190,41 @@ async def random_topic(req: ActionRequest):
     else:
         raise HTTPException(status_code=500, detail="AI 出題失敗，請重試！")
 
+# 💡 記得在檔案最上方或是這個 function 裡面引入 ArrayRemove
+from google.cloud.firestore_v1 import ArrayRemove, DELETE_FIELD
+
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
     if req.admin_pwd != ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="密碼錯誤！拒絕存取。")
     
-    # 1. 刪除對話紀錄
-    query = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name)
-    if req.action_type == "delete_user" and req.target_user:
-        query = query.where("user_name", "==", req.target_user)
-        
-    docs = query.stream()
     batch = db.batch()
-    for doc in docs:
-        batch.delete(doc.reference)
+    doc_ref_meta = db.collection("system_meta").document("active_rooms")
     
-    # 2. 💡 毀滅性清空：如果是 clear_room，連房間簽到表都要拔掉
-    if req.action_type == "clear_room":
-        doc_ref = db.collection("system_meta").document("active_rooms")
-        # 使用 firestore.DELETE_FIELD 來刪除 map 裡的特定 key
-        from google.cloud import firestore as google_firestore
-        doc_ref.update({
-            req.room_name: google_firestore.DELETE_FIELD
+    # 💡 情況 A：刪除單一玩家
+    if req.action_type == "delete_user" and req.target_user:
+        # 1. 刪除該玩家在該房間的所有對話
+        docs = db.collection(CHAT_COLLECTION)\
+                 .where("room_name", "==", req.room_name)\
+                 .where("user_name", "==", req.target_user).stream()
+        for doc in docs:
+            batch.delete(doc.reference)
+        
+        # 2. ✨ 關鍵：同步從大廳的「角色清單」中移除該名字
+        batch.update(doc_ref_meta, {
+            req.room_name: ArrayRemove([req.target_user])
+        })
+        
+    # 💡 情況 B：毀滅性清空房間
+    elif req.action_type == "clear_room":
+        # 1. 刪除房間內所有訊息
+        docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream()
+        for doc in docs:
+            batch.delete(doc.reference)
+        
+        # 2. ✨ 關鍵：直接把整個房間從簽到表拔掉
+        batch.update(doc_ref_meta, {
+            req.room_name: DELETE_FIELD
         })
         
     batch.commit()
