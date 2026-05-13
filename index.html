@@ -472,7 +472,8 @@
             });
 
             // ✨ 通道 2：監聽「對話區」，並加入 limitToLast(50) 完美省下讀取次數！
-            const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"), limitToLast(50));
+            // ✨ 修復 3：移除 limitToLast，避開 Firebase 嚴格的索引審查，讓對話框恢復正常
+            const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"));
             onSnapshot(q, (snapshot) => {
                 const chatBox = document.getElementById('chat-box');
                 chatBox.innerHTML = ""; chatHistory = [];
@@ -570,7 +571,9 @@
         });
 
         document.getElementById('hint-btn').addEventListener('click', async () => {
-            let targetWord = gameState.lastIdiom;
+            // ✨ 修復 4：正確抓取目前最新的題目狀態
+            let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
+            if (!targetWord) targetWord = "";
             if(!targetWord) return await showModalAlert("還沒有題目！");
             
             const msg = "確定要花費分數購買提示嗎？\n\n💡 功能說明：每次提示將扣除 5 分。\n第一階段：提供下一句建議成語的「第三個字」。\n第二階段：由 AI 進行成語意思解釋（不含標點與原字）。";
