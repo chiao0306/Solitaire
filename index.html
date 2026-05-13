@@ -496,56 +496,13 @@
                             else if (diff < 0) pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
                         }
                         
-                    // --- 以下是終極完美版：智慧偵測動畫狀態 ---
-                    
-                    // 1. 預判這回合是不是有 4 字成語動畫
-                    let newIdiom = newState.pendingIdiom;
-                    let willAnimate = (newIdiom && newIdiom !== previousPendingIdiom && newIdiom.length === 4);
-                    
-                    // 2. 結算分數差異
-                    let pendingToasts = [];
-                    if (previousScores !== null) {
-                        let oldScores = previousScores || {};
-                        let newScores = newState.scores || {};
-                        for (let player in newScores) {
-                            let oldScore = oldScores[player] || 50;
-                            let newScore = newScores[player];
-                            let diff = newScore - oldScore;
-                            if (diff > 0) pendingToasts.push({ text: `🎉 ${player} +${diff} 分`, type: "success" });
-                            else if (diff < 0) pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
-                        }
-                    }
-                    
-                    // 3. 系統內部先記住最新狀態 (但不急著畫在畫面上)
-                    previousScores = { ...(newState.scores || {}) };
-                    previousPendingIdiom = newState.pendingIdiom;
-                    gameState = newState;
-
-                    // 4. 建立一個智慧檢查器，等動畫「真正」結束才更新畫面
-                    const updateScreenWhenReady = () => {
-                        let overlay = document.getElementById('idiom-overlay');
-                        // 偷看畫面：大絕招動畫是不是還在霸佔螢幕？
-                        if (overlay && overlay.style.display === 'flex') {
-                            // 動畫還在跑，摸摸鼻子再等 0.5 秒回來檢查
-                            setTimeout(updateScreenWhenReady, 500);
-                        } else {
-                            // 動畫結束了 (或根本沒動畫)，安全釋放更新！
+                        let newIdiom = newState.pendingIdiom;
+                        let willAnimate = (newIdiom && newIdiom !== previousPendingIdiom && newIdiom.length === 4);
+                        
+                        let toastDelay = willAnimate ? 3200 : 0; 
+                        setTimeout(() => {
                             pendingToasts.forEach(t => showToast(t.text, t.type));
-                            
-                            let scores = gameState.scores || {};
-                            let scoreHTML = Object.entries(scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
-                            document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
-                            
-                            updateUI();
-                        }
-                    };
-
-                    // 如果我們預判會有動畫，先等個 0.5 秒讓對話區的連線跟上並觸發動畫，再去檢查
-                    if (willAnimate) {
-                        setTimeout(updateScreenWhenReady, 500);
-                    } else {
-                        // 沒動畫 (例如買提示、被扣分)，直接秒速更新
-                        updateScreenWhenReady();
+                        }, toastDelay);
                     }
                     
                     previousScores = { ...(newState.scores || {}) };
