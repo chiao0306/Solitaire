@@ -683,12 +683,11 @@
             }
         });
         
-        // 💡 全螢幕必殺技動畫主程式 (2x2 田字型排版)
+        // 💡 全螢幕必殺技動畫主程式 (修復連續發言 Bug)
         function triggerFlashyEffect(userName, text) {
             const overlay = document.getElementById('idiom-overlay');
             overlay.style.display = 'flex';
             
-            // 💡 關鍵修改：將原本的 display:flex 改成 display:grid，並設定為兩欄 (1fr 1fr)
             overlay.innerHTML = `
                 <div style="color:#fff; font-size:28px; position:absolute; top:20%; font-weight:bold; letter-spacing: 3px;">
                     👤 ${userName} 使出...
@@ -701,23 +700,23 @@
                 setTimeout(() => {
                     const charDiv = document.createElement('div');
                     charDiv.className = 'idiom-char animate-char';
-                    charDiv.style.lineHeight = "1"; // 確保上下間距緊湊
+                    charDiv.style.lineHeight = "1";
                     charDiv.textContent = char;
                     document.getElementById('idiom-grid').appendChild(charDiv);
                 }, i * 500); 
             });
 
-            // 全場強制暫停：把輸入框跟按鈕暫時鎖死
+            // 💡 動畫期間強制鎖定，不要去記舊的狀態
             const input = document.getElementById('msg-input');
             const btn = document.getElementById('send-btn');
-            const oldInputState = input.disabled;
-            input.disabled = true; btn.disabled = true;
+            input.disabled = true; 
+            btn.disabled = true;
 
-            // 3 秒後自動關閉動畫，並把操作權還給玩家
+            // 3 秒後自動關閉動畫
             setTimeout(() => { 
                 overlay.style.display = 'none'; 
-                input.disabled = oldInputState; 
-                btn.disabled = oldInputState;
+                // ✨ 核心修復：動畫結束後，把主導權交還給狀態引擎，讓它決定現在到底該不該解鎖！
+                updateUI();
             }, 3000);
         }
     </script>
