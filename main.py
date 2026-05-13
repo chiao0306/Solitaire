@@ -175,13 +175,29 @@ async def send_chat(req: ChatRequest):
         
         tracked = state["trackedPlayers"]
         if tracked:
-            # 取出鎖定名單中最少的回合數，推動全域回合
+            # 紀錄改變前的全域回合數
+            old_round = state.get("currentRound", 0)
+            
+            # 重新計算最新的全域回合數
             min_round = min([state["playerRounds"].get(p, 0) for p in tracked])
             state["currentRound"] = min_round
             
-            # 判斷是否結算
-            if state.get("maxRounds", 0) > 0 and state["currentRound"] >= state["maxRounds"]:
-                state["isGameOver"] = True
+            # 判斷是否結算或發送倒數警告
+            if state.get("maxRounds", 0) > 0:
+                if state["currentRound"] >= state["maxRounds"]:
+                    state["isGameOver"] = True
+                # ✨ 新增：當全域回合數推進 (min_round > old_round) 時，代表又輪到開局第一人了
+                elif min_round > old_round:
+                    remaining = state["maxRounds"] - min_round
+                    # 如果剩下 3、2、1 回合，發送系統廣播到聊天室
+                    if 0 < remaining <= 3:
+                        db.collection(CHAT_COLLECTION).add({
+                            "room_name": req.room_name, 
+                            "user_name": "System", 
+                            "text": f"【系統】🚨 比賽進入最後倒數，剩下 **{remaining}** 回合！", 
+                            "type": "system", 
+                            "timestamp": firestore.SERVER_TIMESTAMP
+                        })
 
     update_current_turn(state)
     save_room_state(req.room_name, state)
