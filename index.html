@@ -17,7 +17,6 @@
         
         button { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; color: white; transition: 0.2s; }
         button:active { transform: scale(0.98); }
-        /* 💡 新增：鎖定按鈕的樣式 */
         button:disabled { background: #374151 !important; color: #9ca3af !important; cursor: not-allowed; border: none; }
         
         .btn-primary { background: #ff4b4b; } .btn-primary:hover { background: #ff3333; }
@@ -25,60 +24,31 @@
         .btn-danger { background: #dc2626; }
         
         #game-screen { display: none; }
-        /* 💡 聊天室版面升級 */
         .chat-box { background: #1a1c23; border-radius: 10px; padding: 15px; height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; border: 1px solid #31333f; }
         
-        /* 訊息外層容器：決定左右靠攏 */
         .msg-wrapper { display: flex; flex-direction: column; width: 100%; }
-        .msg-wrapper.self { align-items: flex-end; }   /* 自己：靠右 */
-        .msg-wrapper.other { align-items: flex-start; } /* 對手：靠左 */
-        .msg-wrapper.system { align-items: center; }    /* 系統：置中 */
+        .msg-wrapper.self { align-items: flex-end; }   
+        .msg-wrapper.other { align-items: flex-start; } 
+        .msg-wrapper.system { align-items: center; }    
 
         .msg { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 15px; line-height: 1.4; position: relative; }
         
-        /* 不同角色的顏色 */
-        .msg.self { background: #056162; color: white; border-bottom-right-radius: 2px; }
-        .msg.other { background: #31333f; color: white; border-bottom-left-radius: 2px; }
-        
-        /* 💡 修改：人名放大 1.3 倍 (原本 11px -> 約 14.5px) */
         .msg-info { font-size: 14.5px; margin-bottom: 4px; color: #aaa; font-weight: 500; }
-
-        /* 💡 新增：系統隨機出題的藍色塊樣式 */
-        .msg.topic-prompt { 
-            background: #1e40af !important; /* 深藍色 */
-            color: #fff !important; 
-            font-weight: bold; 
-            align-self: center; 
-            border: none; 
-            font-size: 15px; 
-            box-shadow: 0 0 10px rgba(30, 64, 175, 0.5);
-        }
-        
-        /* 💡 放大玩家發文的訊息框 (大約 1.5 倍) */
-        .msg.self, .msg.other { 
-            font-size: 22px; 
-            padding: 15px 22px; 
-        }
-        
-        /* 不同角色的背景色保持不變 */
+        .msg.topic-prompt { background: #1e40af !important; color: #fff !important; font-weight: bold; align-self: center; border: none; font-size: 15px; box-shadow: 0 0 10px rgba(30, 64, 175, 0.5); }
+        .msg.self, .msg.other { font-size: 22px; padding: 15px 22px; }
         .msg.self { background: #056162; color: white; border-bottom-right-radius: 2px; }
         .msg.other { background: #31333f; color: white; border-bottom-left-radius: 2px; }
         
-        /* 系統與特殊狀態 (維持原本 15px 的大小) */
         .msg.system, .msg.join, .msg.game_over { background: transparent; color: #888; font-size: 13px; text-align: center; border: none; max-width: 100%; }
         .msg.referee { background: rgba(63, 98, 18, 0.4); border-left: 4px solid #84cc16; color: #d9f99d; align-self: center; text-align: center; font-size: 15px; }
         
-        /* ✨ 特殊大色塊狀態：逃生、3連擊成功、裁判退件提示 */
         .msg.sos_start { background: #eab308 !important; color: #000 !important; font-weight: bold; align-self: center; border: none; font-size: 15px; }
         .msg.combo-success { background: #10b981 !important; color: #fff !important; font-weight: bold; align-self: center; border: none; font-size: 15px; }
         .msg.retry-prompt { background: #ef4444 !important; color: #fff !important; font-weight: bold; align-self: center; border: none; font-size: 15px; margin-top: -5px; }
 
-        .msg-info { font-size: 11px; margin-bottom: 4px; color: #aaa; }
-        
         .controls { display: flex; gap: 8px; margin-bottom: 10px; }
         .controls input { margin-bottom: 0; }
         
-        /* 歷史紀錄標籤按鈕樣式 */
         .chip-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -10px; margin-bottom: 20px; }
         .chip { background: #31333f; border: 1px solid #4b5563; padding: 6px 12px; border-radius: 16px; font-size: 13px; cursor: pointer; transition: 0.2s; color: #ccc; user-select: none; }
         .chip:hover { background: #4b5563; color: white; }
@@ -89,7 +59,7 @@
         .dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-size: 18px; font-weight: bold; }
         .close-btn { background: transparent; color: #ccc; width: auto; padding: 0; font-size: 20px; }
         hr { border: 0; height: 1px; background: #4b5563; margin: 20px 0; }
-        /* 💡 新增：Toast 加減分提示框與開局大按鈕的樣式 */
+
         #toast-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; pointer-events: none; display: flex; flex-direction: column; gap: 10px; }
         .toast { background: rgba(0,0,0,0.85); color: white; padding: 15px 30px; border-radius: 8px; font-size: 20px; font-weight: bold; text-align: center; animation: fadeInOut 2s ease-in-out forwards; box-shadow: 0 4px 15px rgba(0,0,0,0.5); border-bottom: 4px solid #fff; }
         .toast.success { border-bottom-color: #4CAF50; }
@@ -99,40 +69,22 @@
         
         #start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(14, 17, 23, 0.85); border-radius: 10px; z-index: 10; backdrop-filter: blur(2px); }
 
-        /* 💡 全螢幕必殺技特效容器 */
-        #idiom-overlay {
-            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.85); z-index: 99999;
-            display: none; flex-direction: column; align-items: center; justify-content: center;
-        }
-        
-        /* 💡 單一文字的樣式與動畫 */
-        .idiom-char {
-            font-size: 110px; color: #FFD700; font-weight: bold;
-            text-shadow: 0 0 20px #ea580c, 0 0 40px #facc15;
-            opacity: 0; /* 一開始先隱藏 */
-        }
-
-        @keyframes charJump {
-            0% { opacity: 0; transform: scale(4); filter: blur(10px); }
-            15% { opacity: 1; transform: scale(1); filter: blur(0); }
-            100% { opacity: 1; transform: scale(1); filter: blur(0); }
-        }
+        #idiom-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 99999; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .idiom-char { font-size: 110px; color: #FFD700; font-weight: bold; text-shadow: 0 0 20px #ea580c, 0 0 40px #facc15; opacity: 0; }
+        @keyframes charJump { 0% { opacity: 0; transform: scale(4); filter: blur(10px); } 15% { opacity: 1; transform: scale(1); filter: blur(0); } 100% { opacity: 1; transform: scale(1); filter: blur(0); } }
         .animate-char { animation: charJump 2.5s ease-out forwards; }
 
-        /* 💡 新增：自訂漂亮彈窗的樣式 */
         #custom-alert-dialog { background: #1e293b; color: white; border: 1px solid #4b5563; border-radius: 16px; padding: 25px; width: 90%; max-width: 350px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); text-align: center; }
         #custom-alert-dialog::backdrop { background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(3px); }
         #custom-alert-msg { margin-bottom: 25px; font-size: 16px; line-height: 1.5; white-space: pre-wrap; color: #f8fafc; font-weight: bold; }
         .alert-btn-group { display: flex; gap: 10px; justify-content: center; }
+        .msg.self:hover { cursor: pointer; filter: brightness(1.15); transition: 0.2s; }
 
-        /* 讓自己的發言看起來可以點擊互動 */
-        .msg.self:hover {
-            cursor: pointer;
-            filter: brightness(1.15);
-            transition: 0.2s;
-        }
-
+        /* ✨ 回合制設定區域的設計 */
+        .turn-settings-box { background: #31333f; padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #4b5563; }
+        .turn-settings-row { display: flex; align-items: center; gap: 10px; }
+        .turn-settings-box input[type="checkbox"] { width: 20px; height: 20px; margin: 0; cursor: pointer; accent-color: #ff4b4b; }
+        .turn-settings-box label { margin: 0; font-size: 15px; cursor: pointer; color: #fff; }
     </style>
 </head>
 <body>
@@ -148,6 +100,19 @@
             <label>選擇或輸入遊戲室</label>
             <input type="text" id="room-input" placeholder="輸入房間名稱...">
             <div id="room-chips" class="chip-container"></div>
+            
+            <div class="turn-settings-box">
+                <div class="turn-settings-row">
+                    <input type="checkbox" id="lobby-turn-cb">
+                    <label for="lobby-turn-cb">🏁 開啟回合制比賽</label>
+                    <select id="lobby-rounds-sel" style="width: auto; padding: 6px; margin: 0; display: none; font-size: 14px; flex: 1;">
+                        <option value="5">5 回合</option><option value="10">10 回合</option>
+                        <option value="15">15 回合</option><option value="20">20 回合</option>
+                        <option value="25">25 回合</option><option value="30">30 回合</option>
+                    </select>
+                </div>
+                <div id="lobby-turn-status" style="font-size: 12px; color: #fca5a5; margin-top: 8px; display: none;">🔒 已存在的房間無法在此更改規則，將套用原設定。</div>
+            </div>
             
             <div style="display: flex; gap: 10px;">
                 <div style="flex: 2;">
@@ -192,7 +157,7 @@
                 <button id="sos-btn" style="background: #eab308;">🆘 求生</button>
                 <button id="referee-btn" style="background: #3b82f6;">⚖️ 裁判</button>
                 <button id="hint-btn" style="background: #8b5cf6;">💡 提示</button>
-                </div>
+            </div>
             <button id="surrender-btn" class="btn-dark" style="width: 100%; margin-top: 5px;">🏳️ 我想不出來了 (投降)</button>
             
             <div id="toast-container"></div>
@@ -205,7 +170,19 @@
             <button class="close-btn" onclick="document.getElementById('menu-dialog').close()">✖</button>
         </div>
         
-        <button class="btn-dark" id="btn-restart" style="margin-bottom: 10px;">🔄 重新開始 (清空計分板)</button>
+        <div class="turn-settings-box" style="margin-bottom: 10px; background: #1e293b;">
+            <div class="turn-settings-row">
+                <input type="checkbox" id="restart-turn-cb">
+                <label for="restart-turn-cb">🏁 回合制</label>
+                <select id="restart-rounds-sel" style="width: auto; padding: 6px; margin: 0; display: none; font-size: 14px; flex: 1;">
+                    <option value="5">5 回合</option><option value="10">10 回合</option>
+                    <option value="15">15 回合</option><option value="20">20 回合</option>
+                    <option value="25">25 回合</option><option value="30">30 回合</option>
+                </select>
+            </div>
+        </div>
+
+        <button class="btn-dark" id="btn-restart" style="margin-bottom: 10px;">🔄 重新開始 (套用上方設定)</button>
         <button class="btn-dark" onclick="window.location.reload()" style="margin-bottom: 10px;">🚪 返回大廳</button>
         <button class="btn-dark" onclick="alert('請見 GitHub 上的 README 說明書！')">📖 遊戲規則</button>
         
@@ -230,8 +207,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        // ✨ 核心升級 1：引入 limitToLast，這是解決讀取破表的救星！
-        import { getFirestore, collection, query, where, orderBy, onSnapshot, doc, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, query, where, orderBy, onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyDLbh5GUsAY2vO0MnGDIWysUqdC7KN7BoM", projectId: "solitaire-495623" };
         const API_BASE = "https://solitaire-992925465322.asia-east1.run.app"; 
@@ -240,11 +216,11 @@
         const db = getFirestore(app);
         
         let currentRoom = "", currentPlayer = "", currentAvatar = "😎";
-        let gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {} };
+        let gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {}, maxRounds: 0, currentRound: 0 };
         let chatHistory = [];
         let globalRoomData = {};
         let previousScores = null; 
-        let previousPendingIdiom = null; // ✨ 新增這行：追蹤成語變化來判斷是否要等動畫
+        let previousPendingIdiom = null; 
 
         function showModalAlert(msg, showCancel = false) {
             return new Promise((resolve) => {
@@ -293,33 +269,60 @@
                 let chip = document.createElement('div'); chip.className = 'chip'; chip.textContent = r;
                 chip.onclick = () => {
                     document.getElementById('room-input').value = r;
-                    renderPlayerChips(globalRoomData[r] || {});
+                    // ✨ 觸發輸入框的變更事件，以更新回合制鎖定狀態
+                    document.getElementById('room-input').dispatchEvent(new Event('input'));
                     container.querySelectorAll('.chip').forEach(c => c.classList.remove('active')); chip.classList.add('active');
                 };
                 container.appendChild(chip);
             });
         }
 
+        // ✨ 新增：處理大廳與重新開始選單的回合制下拉顯示
+        document.getElementById('lobby-turn-cb').addEventListener('change', (e) => {
+            document.getElementById('lobby-rounds-sel').style.display = e.target.checked ? 'block' : 'none';
+        });
+        document.getElementById('restart-turn-cb').addEventListener('change', (e) => {
+            document.getElementById('restart-rounds-sel').style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        listenToGlobalRooms();
         function listenToGlobalRooms() {
             const docRef = doc(db, "system_meta", "active_rooms");
             onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     globalRoomData = docSnap.data(); renderRoomChips(Object.keys(globalRoomData));
                     const currentInput = document.getElementById('room-input').value;
-                    if (currentInput && globalRoomData[currentInput]) renderPlayerChips(globalRoomData[currentInput]);
+                    if (currentInput) document.getElementById('room-input').dispatchEvent(new Event('input'));
                 }
             });
         }
-        listenToGlobalRooms();
 
         document.getElementById('room-input').addEventListener('input', (e) => {
-            const selectedRoom = e.target.value;
-            if (globalRoomData[selectedRoom]) renderPlayerChips(globalRoomData[selectedRoom]);
-            else renderPlayerChips([]);
-            document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
+            const selectedRoom = e.target.value.trim();
+            const isExistingRoom = selectedRoom && globalRoomData[selectedRoom];
+            
+            // ✨ 如果房間已存在，反灰大廳的回合制設定，並顯示提示
+            const turnCb = document.getElementById('lobby-turn-cb');
+            const turnSel = document.getElementById('lobby-rounds-sel');
+            const turnStatus = document.getElementById('lobby-turn-status');
+            
+            if (isExistingRoom) {
+                turnCb.disabled = true;
+                turnSel.disabled = true;
+                turnStatus.style.display = 'block';
+                renderPlayerChips(globalRoomData[selectedRoom]);
+            } else {
+                turnCb.disabled = false;
+                turnSel.disabled = false;
+                turnStatus.style.display = 'none';
+                renderPlayerChips([]);
+            }
+            
+            if(e.type !== 'input') { // 防止無限迴圈
+                document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
+            }
         });
 
-        // ✨ 核心升級 2：calculateGameState() 功成身退，正式刪除！直接使用後端傳來的 gameState 狀態更新介面
         function updateUI() {
             const turnInfo = document.getElementById('turn-info'); 
             const msgInput = document.getElementById('msg-input');
@@ -330,7 +333,12 @@
             const surBtn = document.getElementById('surrender-btn'); 
             const startOverlay = document.getElementById('start-overlay'); 
 
-            const myInfoPrefix = `<div style="color: #ccc; font-size: 13px; margin-bottom: 5px;">🏠 房間：${currentRoom} | 👤 ${currentAvatar} ${currentPlayer}</div>`;
+            let roundInfoStr = "";
+            if (gameState.maxRounds && gameState.maxRounds > 0) {
+                roundInfoStr = `<div style="color: #fbbf24; font-size: 15px; font-weight: bold; margin-bottom: 5px; background: rgba(0,0,0,0.3); display: inline-block; padding: 4px 10px; border-radius: 6px;">⏳ 回合制比賽：目前第 ${gameState.currentRound} / ${gameState.maxRounds} 回合</div><br>`;
+            }
+
+            const myInfoPrefix = `${roundInfoStr}<div style="color: #ccc; font-size: 13px; margin-bottom: 5px;">🏠 房間：${currentRoom} | 👤 ${currentAvatar} ${currentPlayer}</div>`;
 
             if (gameState.isGameOver) {
                 turnInfo.innerHTML = `${myInfoPrefix}🏁 遊戲結束！請在選單點擊重新開始。`; turnInfo.style.color = "#ef4444";
@@ -365,7 +373,6 @@
                 sosString = ` <span style="color: #eab308;">(🚨 逃生中：剩 ${remainingSos} 次)</span>`; 
             }
 
-            // ✨ 核心修復：正確讀取「目前的成語」(pendingIdiom)
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
             if (!targetWord) targetWord = "";
 
@@ -424,14 +431,15 @@
             } catch(e) { await showModalAlert("連線後端失敗！"); return false; }
         }
 
-        // ====== 雙通道監聽：進入房間 ======
         document.getElementById('join-btn').addEventListener('click', async () => {
             currentRoom = document.getElementById('room-input').value.trim();
             currentPlayer = document.getElementById('player-input').value.trim();
             currentAvatar = document.getElementById('avatar-input').value;
             if (!currentRoom || !currentPlayer) return await showModalAlert("⚠️ 請填寫房間名稱與名字！");
 
+            let isExistingRoom = !!globalRoomData[currentRoom];
             let roomData = globalRoomData[currentRoom]; let isNameTaken = false;
+            
             if (roomData) {
                 if (Array.isArray(roomData)) isNameTaken = roomData.includes(currentPlayer);
                 else isNameTaken = Object.keys(roomData).includes(currentPlayer);
@@ -442,6 +450,12 @@
                 if (!(await showModalAlert(confirmMsg, true))) return; 
             }
 
+            // ✨ 抓取設定的回合數 (若是既有房間，後端會自動忽略這項參數)
+            let applyMaxRounds = 0;
+            if (!isExistingRoom && document.getElementById('lobby-turn-cb').checked) {
+                applyMaxRounds = parseInt(document.getElementById('lobby-rounds-sel').value);
+            }
+
             let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
             if(!savedPlayers.includes(currentPlayer)) { savedPlayers.push(currentPlayer); localStorage.setItem('savedPlayers', JSON.stringify(savedPlayers)); }
 
@@ -449,41 +463,38 @@
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('menu-btn').style.display = 'block';
 
-            // ✨ 通道 1：監聽「房間狀態」，負責計分與介面更新 (極低消耗)
-            let hasShownGameOver = false; // 💡 防止結算視窗重複跳出的開關
+            let hasShownGameOver = false; 
             const stateRef = doc(db, "room_states", currentRoom);
             
             onSnapshot(stateRef, (docSnap) => {
                 if (docSnap.exists()) {
                     let newState = docSnap.data();
                     
-                    // 🏆 結算邏輯：如果遊戲結束且還沒跳過視窗
                     if (newState.isGameOver && !hasShownGameOver) {
                         hasShownGameOver = true; 
 
                         if (newState.surrenderUser) {
-                            // 情況 A：有人投降
                             showModalAlert(`🏳️ 遊戲結算\n\n${newState.surrenderUser} 接不出來，舉白旗投降了！`);
                         } else {
-                            // 情況 B：有人分數歸零 (顯示排名)
+                            // ✨ 結算訊息會自動涵蓋「分數歸零」或「達最大回合數」的狀況
                             let scoreEntries = Object.entries(newState.scores || {});
-                            scoreEntries.sort((a, b) => b[1] - a[1]); // 分數高排到低
+                            scoreEntries.sort((a, b) => b[1] - a[1]); 
                             
                             let rankingList = scoreEntries.map((e, index) => {
                                 let medal = index === 0 ? "🥇" : (index === 1 ? "🥈" : (index === 2 ? "🥉" : "👤"));
                                 return `${medal} 第 ${index + 1} 名：${e[0]} (${e[1]}分)`;
                             }).join("\n");
+                            
+                            let reason = (newState.maxRounds > 0 && newState.currentRound >= newState.maxRounds) 
+                                ? `⏱️ 已達最高回合限制 (${newState.maxRounds} 回合)` 
+                                : `☠️ 有人分數歸零了！`;
 
-                            showModalAlert(`🏁 遊戲結算：有人分數歸零了！\n\n【最終排名紀錄】\n${rankingList}`);
+                            showModalAlert(`🏁 遊戲結算：${reason}\n\n【最終排名紀錄】\n${rankingList}`);
                         }
                     }
                     
-                    // 當遊戲重新開始（isGameOver 變回 false）時，重置這個開關
-                    if (!newState.isGameOver) {
-                        hasShownGameOver = false;
-                    }
+                    if (!newState.isGameOver) hasShownGameOver = false;
 
-                    // --- 以下是原本處理分數變化跳字 (Toast) 的邏輯 ---
                     if (previousScores !== null) {
                         let pendingToasts = [];
                         let oldScores = previousScores || {};
@@ -514,14 +525,11 @@
                     document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
                     updateUI();
                 } else {
-                    // 如果房間剛開還沒紀錄，建立一個空的暫存狀態
-                    gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: False, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {} };
+                    gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {}, maxRounds: 0, currentRound: 0 };
                     updateUI();
                 }
             });
 
-            // ✨ 通道 2：監聽「對話區」，並加入 limitToLast(50) 完美省下讀取次數！
-            // ✨ 修復 3：移除 limitToLast，避開 Firebase 嚴格的索引審查，讓對話框恢復正常
             const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"));
             onSnapshot(q, (snapshot) => {
                 const chatBox = document.getElementById('chat-box');
@@ -574,7 +582,6 @@
 
                 chatBox.scrollTop = chatBox.scrollHeight;
                 
-                // 動畫與狀態分開後，用一個全域變數做時間橋樑，避免加分彈窗打架
                 let latestMsg = chatHistory[chatHistory.length - 1];
                 if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
                     let msgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
@@ -587,7 +594,8 @@
                 }
             });
 
-            apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar });
+            // ✨ 將設定好的 max_rounds 傳給後端
+            apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar, max_rounds: applyMaxRounds });
         });
 
         document.getElementById('msg-input').addEventListener('keypress', function (e) {
@@ -599,7 +607,6 @@
             let isSosFinishing = (gameState.sosUser === currentPlayer && gameState.sosCount === 2);
             let ignoreTone = (gameState.sosUser === currentPlayer && gameState.sosCount === 0);
             
-            // 💡 改版：從後端的 gameState 中取得真正的上一句成語
             let validLastIdiom = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
 
             let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: validLastIdiom, ignore_tone: ignoreTone });
@@ -620,9 +627,7 @@
         });
 
         document.getElementById('hint-btn').addEventListener('click', async () => {
-            // ✨ 核心修復：買提示時，也要抓取最新的題目
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
-            
             if(!targetWord) return await showModalAlert("還沒有題目！");
             
             const msg = "確定要花費分數購買提示嗎？\n\n💡 功能說明：每次提示將扣除 5 分。\n第一階段：提供下一句建議成語的「第三個字」。\n第二階段：由 AI 進行成語意思解釋（不含標點與原字）。";
@@ -647,7 +652,6 @@
         
         document.getElementById('surrender-btn').addEventListener('click', async () => {
             if(await showModalAlert("確定要投降並結束這場遊戲嗎？", true)) {
-                // 這裡的 text 內容會被後端的邏輯覆蓋掉，所以傳空的沒關係，主要是 action_type 要對
                 apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "", avatar: currentAvatar });
             }
         });
@@ -656,8 +660,14 @@
         document.getElementById('menu-btn').addEventListener('click', () => menuDialog.showModal());
 
         document.getElementById('btn-restart').addEventListener('click', async () => {
-            if(await showModalAlert("確定要清空房間所有對話並重新開始嗎？\n(大廳的玩家角色會保留)", true)) {
-                apiCall('/restart_game', { room_name: currentRoom, user_name: "System", action_type: "restart", text: "", avatar: "" });
+            // ✨ 重啟時決定新的回合制設定
+            let applyMaxRounds = 0;
+            if (document.getElementById('restart-turn-cb').checked) {
+                applyMaxRounds = parseInt(document.getElementById('restart-rounds-sel').value);
+            }
+
+            if(await showModalAlert("確定要清空房間對話並重新開始嗎？\n(大廳的玩家角色將保留，並套用上方回合制新設定)", true)) {
+                apiCall('/restart_game', { room_name: currentRoom, user_name: "System", action_type: "restart", text: "", avatar: "", max_rounds: applyMaxRounds });
                 menuDialog.close();
             }
         });
@@ -681,39 +691,22 @@
             }
         });
 
-        // 💡 監聽聊天室的點擊事件，處理「收回發言」功能
         document.getElementById('chat-box').addEventListener('click', async (e) => {
-            // 確認點擊的是自己發出的訊息泡泡
             if (e.target.classList.contains('msg') && e.target.classList.contains('self')) {
                 if (gameState.isGameOver) return;
-
-                // 找出畫面上最新的一筆「成語對話」
                 let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
 
-                // 條件判斷：點擊的這句話必須是最新發言，且發言者是自己，且下一個人還沒發言
                 if (lastChat && e.target.innerText === lastChat.text && lastChat.user_name === currentPlayer && gameState.lastChatUser === currentPlayer) {
-                    
-                    if (gameState.alreadyJudged) {
-                        return showToast("⚠️ 裁判已經出動，無法收回囉！", "warning");
-                    }
+                    if (gameState.alreadyJudged) return showToast("⚠️ 裁判已經出動，無法收回囉！", "warning");
 
-                    // 判斷剛才是同字還是同音，決定顯示的扣分金額
                     let isPerfectMatch = gameState.lastChatWasPerfectMatch;
                     let penalty = isPerfectMatch ? 25 : 15;
-
                     const msg = `確定要收回「${lastChat.text}」嗎？\n\n💡 收回代價：\n您剛才是${isPerfectMatch ? '同字' : '同音'}接龍，\n收回將扣除 ${penalty} 分 (等同這回合原地扣 5 分)！`;
 
                     if (await showModalAlert(msg, true)) {
-                        apiCall('/revoke_chat', { 
-                            room_name: currentRoom, 
-                            user_name: currentPlayer, 
-                            action_type: "revoke", 
-                            text: "收回發言", 
-                            avatar: currentAvatar 
-                        });
+                        apiCall('/revoke_chat', { room_name: currentRoom, user_name: currentPlayer, action_type: "revoke", text: "收回發言", avatar: currentAvatar });
                     }
                 } else {
-                    // 點到了已經過去的舊訊息
                     showToast("⚠️ 只能收回自己最新且還沒被接下去的發言喔！", "warning");
                 }
             }
