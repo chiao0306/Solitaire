@@ -126,11 +126,13 @@ async def restart_game(req: ActionRequest):
 @app.post("/call_referee")
 async def call_referee(req: ActionRequest):
     prompt = f"請判斷「{req.target_text}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
-    # 👇 這裡加上 safety_settings
     res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+    
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": "Referee (AI)", "text": res.text.strip(), 
-        "type": "referee", "timestamp": firestore.SERVER_TIMESTAMP
+        "type": "referee", 
+        "requested_by": req.user_name, # ✨ 關鍵新增：紀錄是誰呼叫了裁判
+        "timestamp": firestore.SERVER_TIMESTAMP
     })
     return {"status": "success"}
 
