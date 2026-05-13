@@ -108,13 +108,9 @@
         
         /* 💡 單一文字的樣式與動畫 */
         .idiom-char {
-            font-size: 110px; color: #FFD700; 
-            font-weight: 700; /* 有了雲端字體，我們就可以安心用粗體了！ */
-            -webkit-text-stroke: 2px #b45309; /* 加上深橘色邊框更有立體感 */
+            font-size: 110px; color: #FFD700; font-weight: bold;
             text-shadow: 0 0 20px #ea580c, 0 0 40px #facc15;
-            opacity: 0; 
-            /* ✨ 終極解法：強制套用雲端文楷體，所有手機保證生效 */
-            font-family: "LXGW WenKai TC", "BiauKai", "Kaiti TC", "楷體-繁", "標楷體", serif; 
+            opacity: 0; /* 一開始先隱藏 */
         }
 
         @keyframes charJump {
@@ -131,9 +127,6 @@
         .alert-btn-group { display: flex; gap: 10px; justify-content: center; }
 
     </style>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
