@@ -25,13 +25,29 @@
         .btn-danger { background: #dc2626; }
         
         #game-screen { display: none; }
-        .chat-box { background: #1a1c23; border-radius: 10px; padding: 15px; height: 380px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #31333f; }
-        .msg { margin-bottom: 12px; padding: 12px; border-radius: 10px; background: #31333f; font-size: 15px; line-height: 1.4; }
-        .msg.system { background: rgba(30, 58, 138, 0.4); border-left: 4px solid #3b82f6; color: #93c5fd; }
-        .msg.referee { background: rgba(63, 98, 18, 0.4); border-left: 4px solid #84cc16; color: #d9f99d; }
-        .msg.join { background: transparent; color: #888; font-size: 13px; text-align: center; padding: 5px; }
-        /* 💡 新增：遊戲結束訊息樣式 */
-        .msg.game_over { background: rgba(220, 38, 38, 0.2); border: 1px dashed #dc2626; color: #fca5a5; text-align: center; font-weight: bold; }
+        /* 💡 聊天室版面升級 */
+        .chat-box { background: #1a1c23; border-radius: 10px; padding: 15px; height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; border: 1px solid #31333f; }
+        
+        /* 訊息外層容器：決定左右靠攏 */
+        .msg-wrapper { display: flex; flex-direction: column; width: 100%; }
+        .msg-wrapper.self { align-items: flex-end; }   /* 自己：靠右 */
+        .msg-wrapper.other { align-items: flex-start; } /* 對手：靠左 */
+        .msg-wrapper.system { align-items: center; }    /* 系統：置中 */
+
+        .msg { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 15px; line-height: 1.4; position: relative; }
+        
+        /* 不同角色的顏色 */
+        .msg.self { background: #056162; color: white; border-bottom-right-radius: 2px; }
+        .msg.other { background: #31333f; color: white; border-bottom-left-radius: 2px; }
+        
+        /* 系統與特殊狀態 */
+        .msg.system, .msg.join, .msg.game_over { background: transparent; color: #888; font-size: 13px; text-align: center; border: none; max-width: 100%; }
+        .msg.referee { background: rgba(63, 98, 18, 0.4); border-left: 4px solid #84cc16; color: #d9f99d; align-self: center; text-align: center; }
+        
+        /* ✨ 需求：換調求生改為黃色 */
+        .msg.sos_start { background: #eab308 !important; color: #000 !important; font-weight: bold; align-self: center; border: none; }
+
+        .msg-info { font-size: 11px; margin-bottom: 4px; color: #aaa; }
         
         .controls { display: flex; gap: 8px; margin-bottom: 10px; }
         .controls input { margin-bottom: 0; }
@@ -169,38 +185,37 @@
             setTimeout(() => toast.remove(), 2000); // 2秒後消失
         }
 
-        // 💡 修改：純粹渲染傳入的名單，不預載手機紀錄
-        function renderPlayerChips(roomPlayers = []) {
+        function renderPlayerChips(roomPlayersMap = {}) {
             const container = document.getElementById('player-chips');
-            container.innerHTML = ''; // 清空
+            container.innerHTML = '';
+            const players = Object.keys(roomPlayersMap); // 💡 現在是 Map 結構
             
-            if (roomPlayers.length === 0) return; // 沒人就不畫
-
-            roomPlayers.forEach(p => {
+            players.forEach(p => {
                 let chip = document.createElement('div');
-                chip.className = 'chip';
-                chip.textContent = p;
+                chip.className = 'chip'; chip.textContent = p;
                 chip.onclick = () => {
                     document.getElementById('player-input').value = p;
+                    // ✨ 核心需求：點了角色，自動載入他上次用的頭像
+                    const lastAvatar = roomPlayersMap[p];
+                    if (lastAvatar) document.getElementById('avatar-input').value = lastAvatar;
+                    
                     container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                     chip.classList.add('active');
                 };
                 container.appendChild(chip);
             });
         }
-
+        
         function renderRoomChips(rooms) {
             const container = document.getElementById('room-chips');
             container.innerHTML = '';
             rooms.forEach(r => {
                 let chip = document.createElement('div');
-                chip.className = 'chip';
-                chip.textContent = r;
+                chip.className = 'chip'; chip.textContent = r;
                 chip.onclick = () => {
                     document.getElementById('room-input').value = r;
-                    // 💡 重點：點了房間按鈕，才去抓該房間的玩家名單出來顯示
-                    renderPlayerChips(globalRoomData[r] || []);
-                    
+                    // 💡 傳入該房間的「玩家:頭像」Map
+                    renderPlayerChips(globalRoomData[r] || {});
                     container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                     chip.classList.add('active');
                 };
@@ -414,10 +429,22 @@
 
                 snapshot.forEach((doc) => {
                     const msg = doc.data(); chatHistory.push(msg);
-                    let cssClass = msg.type === "system" ? "system" : (msg.type === "referee" ? "referee" : (msg.type === "join_room" ? "join" : (msg.type === "game_over" ? "game_over" : "")));
-                    let prefix = ["chat", "join_room", "sos_start"].includes(msg.type) ? `<strong>${msg.avatar || ''} ${msg.user_name}:</strong> ` : "";
-                    chatBox.innerHTML += `<div class="msg ${cssClass}">${prefix}${msg.text}</div>`;
+                    const isSelf = msg.user_name === currentPlayer;
+                    const isSystem = ["system", "join_room", "game_over", "sos_start", "referee"].includes(msg.type);
+                    
+                    let wrapperClass = isSystem ? "system" : (isSelf ? "self" : "other");
+                    let msgClass = msg.type || "chat";
+                    if (!isSystem) msgClass += isSelf ? " self" : " other";
+
+                    // 組合訊息內容
+                    let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar} ${msg.user_name}</div>` : "";
+                    chatBox.innerHTML += `
+                        <div class="msg-wrapper ${wrapperClass}">
+                            ${infoHtml}
+                            <div class="msg ${msgClass}">${msg.text}</div>
+                        </div>`;
                 });
+
                 chatBox.scrollTop = chatBox.scrollHeight;
 
                 gameState = calculateGameState(chatHistory);
