@@ -119,6 +119,12 @@
         }
         .animate-char { animation: charJump 2.5s ease-out forwards; }
 
+        /* 💡 新增：自訂漂亮彈窗的樣式 */
+        #custom-alert-dialog { background: #1e293b; color: white; border: 1px solid #4b5563; border-radius: 16px; padding: 25px; width: 90%; max-width: 350px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); text-align: center; }
+        #custom-alert-dialog::backdrop { background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(3px); }
+        #custom-alert-msg { margin-bottom: 25px; font-size: 16px; line-height: 1.5; white-space: pre-wrap; color: #f8fafc; font-weight: bold; }
+        .alert-btn-group { display: flex; gap: 10px; justify-content: center; }
+
     </style>
 </head>
 <body>
@@ -204,6 +210,14 @@
             <button class="btn-danger" id="btn-del-user" style="width: 80px;">刪除</button>
         </div>
         <button class="btn-danger" id="btn-clear-room">🧨 毀滅式清空房間</button>
+    </dialog>
+    
+    <dialog id="custom-alert-dialog">
+        <div id="custom-alert-msg"></div>
+        <div class="alert-btn-group">
+            <button id="alert-cancel-btn" class="btn-dark" style="display: none; flex: 1;">取消</button>
+            <button id="alert-ok-btn" class="btn-primary" style="flex: 1;">確定</button>
+        </div>
     </dialog>
 
     <script type="module">
