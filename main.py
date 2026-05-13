@@ -223,9 +223,8 @@ async def system_action(req: ActionRequest):
             state["scores"][req.user_name] = 50
             changed = True
             
-        db.collection("system_meta").document("active_rooms").set({
-            req.room_name: { req.user_name: req.avatar }
-        }, merge=True)
+        db.collection("system_meta").document("active_rooms").update({ f"{req.room_name}.{req.target_user}": DELETE_FIELD })
+
     elif req.action_type == "sos_start":
         state["sosUser"] = req.user_name
         state["sosCount"] = 0
