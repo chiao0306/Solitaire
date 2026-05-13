@@ -314,10 +314,14 @@
 
         // ✨ 核心升級 2：calculateGameState() 功成身退，正式刪除！直接使用後端傳來的 gameState 狀態更新介面
         function updateUI() {
-            const turnInfo = document.getElementById('turn-info'); const msgInput = document.getElementById('msg-input');
-            const sendBtn = document.getElementById('send-btn'); const refBtn = document.getElementById('referee-btn');
-            const hintBtn = document.getElementById('hint-btn'); const sosBtn = document.getElementById('sos-btn');
-            const surBtn = document.getElementById('surrender-btn'); const startOverlay = document.getElementById('start-overlay'); 
+            const turnInfo = document.getElementById('turn-info'); 
+            const msgInput = document.getElementById('msg-input');
+            const sendBtn = document.getElementById('send-btn'); 
+            const refBtn = document.getElementById('referee-btn');
+            const hintBtn = document.getElementById('hint-btn'); 
+            const sosBtn = document.getElementById('sos-btn');
+            const surBtn = document.getElementById('surrender-btn'); 
+            const startOverlay = document.getElementById('start-overlay'); 
 
             const myInfoPrefix = `<div style="color: #ccc; font-size: 13px; margin-bottom: 5px;">🏠 房間：${currentRoom} | 👤 ${currentAvatar} ${currentPlayer}</div>`;
 
@@ -333,7 +337,6 @@
             let scores = gameState.scores || {};
             let roundHints = gameState.roundHints || {};
             
-            // 是否已經有題目開局
             const hasStarted = !!gameState.lastIdiom || !!gameState.pendingIdiom;
 
             startOverlay.style.display = (!hasStarted && !gameState.isGameOver) ? "flex" : "none";
@@ -341,7 +344,7 @@
             if (!hasStarted) {
                 isMyTurn = true; 
             } else if (playersOrder.length <= 1) {
-                isMyTurn = true; // 單人模式解除鎖定
+                isMyTurn = true; 
             } else {
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
@@ -350,9 +353,14 @@
             refBtn.disabled = (gameState.alreadyJudged || !hasChat || gameState.isGameOver);
 
             let sosString = ""; let remainingSos = 0;
-            if (gameState.sosUser) { remainingSos = 3 - gameState.sosCount; sosString = ` <span style="color: #eab308;">(🚨 逃生中：剩 ${remainingSos} 次)</span>`; }
+            if (gameState.sosUser) { 
+                remainingSos = 3 - gameState.sosCount; 
+                sosString = ` <span style="color: #eab308;">(🚨 逃生中：剩 ${remainingSos} 次)</span>`; 
+            }
 
-            let targetWord = gameState.lastIdiom || "";
+            // ✨ 核心修復：正確讀取「目前的成語」(pendingIdiom)
+            let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
+            if (!targetWord) targetWord = "";
 
             if (isMyTurn) {
                 if (hasStarted) {
@@ -580,9 +588,9 @@
         });
 
         document.getElementById('hint-btn').addEventListener('click', async () => {
-            // ✨ 修復 4：正確抓取目前最新的題目狀態
+            // ✨ 核心修復：買提示時，也要抓取最新的題目
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
-            if (!targetWord) targetWord = "";
+            
             if(!targetWord) return await showModalAlert("還沒有題目！");
             
             const msg = "確定要花費分數購買提示嗎？\n\n💡 功能說明：每次提示將扣除 5 分。\n第一階段：提供下一句建議成語的「第三個字」。\n第二階段：由 AI 進行成語意思解釋（不含標點與原字）。";
