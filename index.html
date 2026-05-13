@@ -126,6 +126,13 @@
         #custom-alert-msg { margin-bottom: 25px; font-size: 16px; line-height: 1.5; white-space: pre-wrap; color: #f8fafc; font-weight: bold; }
         .alert-btn-group { display: flex; gap: 10px; justify-content: center; }
 
+        /* 讓自己的發言看起來可以點擊互動 */
+        .msg.self:hover {
+            cursor: pointer;
+            filter: brightness(1.15);
+            transition: 0.2s;
+        }
+
     </style>
 </head>
 <body>
@@ -645,6 +652,44 @@
             if(await showModalAlert("🧨 確定要徹底毀滅此房間？資料與角色紀錄將全部消失！", true)) {
                 let success = await apiCall('/admin_action', { room_name: currentRoom, admin_pwd: pwd, action_type: "clear_room" });
                 if(success) { await showModalAlert("房間已徹底毀滅！"); window.location.reload(); }
+            }
+        });
+
+        // 💡 監聽聊天室的點擊事件，處理「收回發言」功能
+        document.getElementById('chat-box').addEventListener('click', async (e) => {
+            // 確認點擊的是自己發出的訊息泡泡
+            if (e.target.classList.contains('msg') && e.target.classList.contains('self')) {
+                if (gameState.isGameOver) return;
+
+                // 找出畫面上最新的一筆「成語對話」
+                let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
+
+                // 條件判斷：點擊的這句話必須是最新發言，且發言者是自己，且下一個人還沒發言
+                if (lastChat && e.target.innerText === lastChat.text && lastChat.user_name === currentPlayer && gameState.lastChatUser === currentPlayer) {
+                    
+                    if (gameState.alreadyJudged) {
+                        return showToast("⚠️ 裁判已經出動，無法收回囉！", "warning");
+                    }
+
+                    // 判斷剛才是同字還是同音，決定顯示的扣分金額
+                    let isPerfectMatch = gameState.lastChatWasPerfectMatch;
+                    let penalty = isPerfectMatch ? 25 : 15;
+
+                    const msg = `確定要收回「${lastChat.text}」嗎？\n\n💡 收回代價：\n您剛才是${isPerfectMatch ? '同字' : '同音'}接龍，\n收回將扣除 ${penalty} 分 (等同這回合原地扣 5 分)！`;
+
+                    if (await showModalAlert(msg, true)) {
+                        apiCall('/revoke_chat', { 
+                            room_name: currentRoom, 
+                            user_name: currentPlayer, 
+                            action_type: "revoke", 
+                            text: "收回發言", 
+                            avatar: currentAvatar 
+                        });
+                    }
+                } else {
+                    // 點到了已經過去的舊訊息
+                    showToast("⚠️ 只能收回自己最新且還沒被接下去的發言喔！", "warning");
+                }
             }
         });
     </script>
