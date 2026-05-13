@@ -35,13 +35,16 @@ custom_safety_settings = [
 ]
 
 CHAT_COLLECTION = "chat_messages"
-STATE_COLLECTION = "room_states"  # ✨ 新增：房間狀態中心
+STATE_COLLECTION = "room_states"  
 ADMIN_PASSWORD = "0306"
 
 class ChatRequest(BaseModel):
     room_name: str; user_name: str; text: str; avatar: str; last_idiom: Optional[str] = None; ignore_tone: bool = False
+
 class ActionRequest(BaseModel):
     room_name: str; user_name: str; action_type: str; text: str; avatar: str; target_text: Optional[str] = None
+    max_rounds: Optional[int] = 0  # ✨ 新增：用來接收回合制設定
+
 class AdminRequest(BaseModel):
     room_name: str; admin_pwd: str; action_type: str; target_user: Optional[str] = None
 
@@ -61,7 +64,7 @@ def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
     return bool(set(last_p).intersection(set(first_p)))
 
 # ==========================================
-# ✨ 核心升級：後端狀態引擎 (State Engine)
+# 後端狀態引擎
 # ==========================================
 def get_default_state():
     return {
@@ -71,7 +74,10 @@ def get_default_state():
         "lastChatPrevSosUser": None, "lastChatPrevSosCount": 0,
         "lastChatWasPerfectMatch": False, "isGameOver": False,
         "alreadyJudged": False, "roundHints": {},
-        "surrenderUser": None  # ✨ 新增：紀錄誰投降了
+        "surrenderUser": None,
+        # ✨ 新增：回合制相關變數
+        "maxRounds": 0, "currentRound": 0, 
+        "trackedPlayers": [], "playerRounds": {}
     }
 
 def update_current_turn(state):
@@ -90,7 +96,6 @@ def update_current_turn(state):
         idx = players.index(last_user)
         state["currentTurn"] = players[(idx + 1) % len(players)]
     else:
-        # ✨ 修復 1：沒人發言時，預設把棒子交給名單的第一個人！
         state["currentTurn"] = players[0]  
 
 def get_room_state(room_name):
@@ -101,7 +106,6 @@ def save_room_state(room_name, state):
     state["updated_at"] = firestore.SERVER_TIMESTAMP
     db.collection(STATE_COLLECTION).document(room_name).set(state)
 
-# 安全刪除大量訊息的小幫手 (避開 Firebase 500 筆限制)
 def delete_messages_safe(room_name, target_user=None):
     query = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name)
     if target_user:
@@ -121,7 +125,6 @@ def delete_messages_safe(room_name, target_user=None):
 async def send_chat(req: ChatRequest):
     state = get_room_state(req.room_name)
     
-    # 雙重驗證：從後端狀態拿真正的上一句成語
     targetForBonus = state.get("lastIdiom") if state.get("rejected") else state.get("pendingIdiom")
     valid_target = targetForBonus if targetForBonus else req.last_idiom
     
@@ -131,6 +134,11 @@ async def send_chat(req: ChatRequest):
     isPerfectMatch = False
     if targetForBonus and req.text and targetForBonus[-1] == req.text[0]:
         isPerfectMatch = True
+
+    # ✨ 回合制：如果是第一句成語，立刻鎖定名單
+    is_first_move = not state.get("lastIdiom") and not state.get("pendingIdiom")
+    if is_first_move and not state.get("trackedPlayers"):
+        state["trackedPlayers"] = state.get("playersOrder", []).copy()
 
     if not state.get("rejected"):
         state["lastIdiom"] = state.get("pendingIdiom")
@@ -145,16 +153,35 @@ async def send_chat(req: ChatRequest):
     state["roundHints"] = {}
 
     user = req.user_name
+    user_finished_turn = False # 紀錄是否完成一個有效回合動作
+
     if state.get("sosUser") == user:
         state["sosCount"] = state.get("sosCount", 0) + 1
         if state["sosCount"] >= 3:
             state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
             state["sosUser"] = None
             state["sosCount"] = 0
+            user_finished_turn = True # 逃生最後一擊才算完成回合
     else:
         state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
         state["sosUser"] = None
         state["sosCount"] = 0
+        user_finished_turn = True # 正常發言算完成回合
+
+    # ✨ 回合推進計算邏輯
+    if user_finished_turn and user in state.get("trackedPlayers", []):
+        state["playerRounds"] = state.get("playerRounds", {})
+        state["playerRounds"][user] = state["playerRounds"].get(user, 0) + 1
+        
+        tracked = state["trackedPlayers"]
+        if tracked:
+            # 取出鎖定名單中最少的回合數，推動全域回合
+            min_round = min([state["playerRounds"].get(p, 0) for p in tracked])
+            state["currentRound"] = min_round
+            
+            # 判斷是否結算
+            if state.get("maxRounds", 0) > 0 and state["currentRound"] >= state["maxRounds"]:
+                state["isGameOver"] = True
 
     update_current_turn(state)
     save_room_state(req.room_name, state)
@@ -171,11 +198,15 @@ async def system_action(req: ActionRequest):
     changed = False
 
     if req.action_type == "join_room":
+        # 剛開房時設定最大回合數
+        if not state.get("playersOrder"): 
+            state["maxRounds"] = req.max_rounds
+
         if req.user_name not in state.get("playersOrder", []):
             state["playersOrder"].append(req.user_name)
             state["scores"][req.user_name] = 50
             changed = True
-        # 更新大廳名單
+            
         db.collection("system_meta").document("active_rooms").set({
             req.room_name: { req.user_name: req.avatar }
         }, merge=True)
@@ -185,14 +216,13 @@ async def system_action(req: ActionRequest):
         changed = True
     elif req.action_type == "game_over":
         state["isGameOver"] = True
-        state["surrenderUser"] = req.user_name  # ✨ 紀錄是誰投降的
+        state["surrenderUser"] = req.user_name  
         changed = True
 
     if changed:
         update_current_turn(state)
         save_room_state(req.room_name, state)
 
-    # ✨ 這裡修改了聊天室顯示的文字
     display_text = req.text
     if req.action_type == "game_over":
         display_text = f"【系統】{req.user_name} 投降了 🏳️"
@@ -293,9 +323,14 @@ async def random_topic(req: ActionRequest):
     if res and res.text:
         idiom = res.text.strip()[:4]
         state = get_room_state(req.room_name)
+        
+        # ✨ 回合制：AI出題視同開局，若名單尚未鎖定，立刻鎖定玩家
+        if not state.get("trackedPlayers"):
+            state["trackedPlayers"] = state.get("playersOrder", []).copy()
+            
         state["lastIdiom"] = idiom
         state["pendingIdiom"] = idiom
-        state["lastChatUser"] = req.user_name  # ✨ 修復 2：系統記下是誰按的出題，這樣才能順利換下一個人回合
+        state["lastChatUser"] = req.user_name  
         state["rejected"] = False
         state["sosUser"] = None
         state["sosCount"] = 0
@@ -319,16 +354,16 @@ async def restart_game(req: ActionRequest):
     
     new_state = get_default_state()
     new_state["playersOrder"] = players
+    new_state["maxRounds"] = req.max_rounds # ✨ 寫入新的回合設定
+    
     for p in players:
         new_state["scores"][p] = 50
     
-    # 確保重開後沒有人是投降狀態
     new_state["surrenderUser"] = None
     
     update_current_turn(new_state)
     save_room_state(req.room_name, new_state)
 
-    # 刪除多餘訊息，保留每人一筆 Join
     docs = list(db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream())
     seen_users = set()
     to_delete = []
@@ -354,7 +389,6 @@ async def admin_action(req: AdminRequest):
         raise HTTPException(status_code=403, detail="密碼錯誤！")
     
     state = get_room_state(req.room_name)
-    doc_ref_meta = db.collection("system_meta").document("active_rooms")
     
     if req.action_type == "delete_user" and req.target_user:
         delete_messages_safe(req.room_name, req.target_user)
@@ -364,6 +398,18 @@ async def admin_action(req: AdminRequest):
             state["playersOrder"].remove(req.target_user)
         if req.target_user in state.get("scores", {}):
             del state["scores"][req.target_user]
+            
+        # ✨ 回合制：從鎖定名單中剔除，並重新計算回合
+        if req.target_user in state.get("trackedPlayers", []):
+            state["trackedPlayers"].remove(req.target_user)
+            if req.target_user in state.get("playerRounds", {}):
+                del state["playerRounds"][req.target_user]
+            
+            tracked = state["trackedPlayers"]
+            if tracked:
+                state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
+                if state.get("maxRounds", 0) > 0 and state["currentRound"] >= state["maxRounds"]:
+                    state["isGameOver"] = True
             
         update_current_turn(state)
         save_room_state(req.room_name, state)
@@ -384,15 +430,12 @@ async def get_rooms():
 async def revoke_chat(req: ActionRequest):
     state = get_room_state(req.room_name)
 
-    # 1. 安全檢查：必須是最新發言者，且必須是自己
     if state.get("lastChatUser") != req.user_name:
         raise HTTPException(status_code=400, detail="只能收回自己最新的發言！")
     
-    # 2. 安全檢查：如果裁判已經判決過，就不能收回
     if state.get("alreadyJudged"):
         raise HTTPException(status_code=400, detail="裁判已經判決，無法收回！")
 
-    # 3. 判斷剛才是哪種接龍，計算對應代價
     is_perfect_match = state.get("lastChatWasPerfectMatch", False)
     penalty = 25 if is_perfect_match else 15
 
@@ -400,9 +443,6 @@ async def revoke_chat(req: ActionRequest):
     if state["scores"][req.user_name] <= 0:
         state["isGameOver"] = True
 
-    # === 替換從這裡開始 ===
-
-    # 4. 刪除資料庫中的那筆發言實體 (改用 Python 排序，避開 Firebase 複合索引報錯)
     docs = list(db.collection(CHAT_COLLECTION)\
         .where("room_name", "==", req.room_name)\
         .where("user_name", "==", req.user_name)\
@@ -411,11 +451,18 @@ async def revoke_chat(req: ActionRequest):
         
     valid_docs = [d for d in docs if d.to_dict().get("timestamp") is not None]
     if valid_docs:
-        # 在 Python 端按時間降序排序，拿最新的一筆
         valid_docs.sort(key=lambda d: d.to_dict().get("timestamp"), reverse=True)
         db.collection(CHAT_COLLECTION).document(valid_docs[0].id).delete()
 
-    # 5. 確認刪除沒問題後，才把扣分的狀態正式存入資料庫 (改變順序，確保安全)
+    # ✨ 回合制：收回發言，個人計數器 -1
+    user = req.user_name
+    if user in state.get("trackedPlayers", []):
+        state["playerRounds"] = state.get("playerRounds", {})
+        state["playerRounds"][user] = max(0, state["playerRounds"].get(user, 0) - 1)
+        tracked = state["trackedPlayers"]
+        if tracked:
+            state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
+
     state["rejected"] = True
     state["sosUser"] = state.get("lastChatPrevSosUser")
     state["sosCount"] = state.get("lastChatPrevSosCount")
@@ -423,7 +470,6 @@ async def revoke_chat(req: ActionRequest):
     update_current_turn(state)
     save_room_state(req.room_name, state)
 
-    # 6. 發布系統廣播，讓畫面顯示收回紀錄
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": "System", 
         "text": f"【系統】**{req.user_name}** 覺得不妥，收回了發言！扣除 {penalty} 分 (原地 -5 分)", 
