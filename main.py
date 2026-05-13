@@ -368,3 +368,54 @@ async def admin_action(req: AdminRequest):
 async def get_rooms():
     doc = db.collection("system_meta").document("active_rooms").get()
     return {"status": "success", "data": doc.to_dict() if doc.exists else {}}
+
+@app.post("/revoke_chat")
+async def revoke_chat(req: ActionRequest):
+    state = get_room_state(req.room_name)
+
+    # 1. 安全檢查：必須是最新發言者，且必須是自己
+    if state.get("lastChatUser") != req.user_name:
+        raise HTTPException(status_code=400, detail="只能收回自己最新的發言！")
+    
+    # 2. 安全檢查：如果裁判已經判決過，就不能收回
+    if state.get("alreadyJudged"):
+        raise HTTPException(status_code=400, detail="裁判已經判決，無法收回！")
+
+    # 3. 判斷剛才是哪種接龍，計算對應代價
+    is_perfect_match = state.get("lastChatWasPerfectMatch", False)
+    penalty = 25 if is_perfect_match else 15
+
+    state["scores"][req.user_name] = state["scores"].get(req.user_name, 50) - penalty
+    if state["scores"][req.user_name] <= 0:
+        state["isGameOver"] = True
+
+    # 4. 狀態回退技巧：直接利用系統原有的 rejected 機制
+    # 這樣系統會自動把「要接的成語」退回上一個，並且把回合還給該玩家！
+    state["rejected"] = True
+    
+    # 恢復玩家可能正在進行的求生狀態
+    state["sosUser"] = state.get("lastChatPrevSosUser")
+    state["sosCount"] = state.get("lastChatPrevSosCount")
+
+    update_current_turn(state)
+    save_room_state(req.room_name, state)
+
+    # 5. 刪除資料庫中的那筆發言實體 (找該玩家在該房間的最新一筆 chat)
+    docs = list(db.collection(CHAT_COLLECTION)\
+        .where("room_name", "==", req.room_name)\
+        .where("user_name", "==", req.user_name)\
+        .where("type", "==", "chat")\
+        .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+        .limit(1).stream())
+        
+    if docs:
+        db.collection(CHAT_COLLECTION).document(docs[0].id).delete()
+
+    # 6. 發布系統廣播，讓畫面顯示收回紀錄
+    db.collection(CHAT_COLLECTION).add({
+        "room_name": req.room_name, "user_name": "System", 
+        "text": f"【系統】**{req.user_name}** 覺得不妥，收回了發言！扣除 {penalty} 分 (原地 -5 分)", 
+        "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
+    })
+
+    return {"status": "success"}
