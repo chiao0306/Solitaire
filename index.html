@@ -111,7 +111,10 @@
             font-size: 110px; color: #FFD700; font-weight: bold;
             text-shadow: 0 0 20px #ea580c, 0 0 40px #facc15;
             opacity: 0; /* 一開始先隱藏 */
+            /* ✨ 新增：設定為標楷體，呈現武俠必殺技風格 */
+            font-family: 'DFKai-sb', 'BiaoKai', 'KaiTi', '楷體', serif; 
         }
+
         @keyframes charJump {
             0% { opacity: 0; transform: scale(4); filter: blur(10px); }
             15% { opacity: 1; transform: scale(1); filter: blur(0); }
@@ -350,6 +353,7 @@
                     } else { scores[user] += isPerfectMatch ? 20 : 10; sosUser = null; sosCount = 0; }
                 } else if (mType === "referee") {
                     if (text.includes("✅") || text.includes("❌")) alreadyJudged = true;
+                    
                     if (text.includes("❌")) {
                         rejected = true;
                         if (lastChatUser && scores[lastChatUser]) { 
@@ -357,7 +361,14 @@
                             if (scores[lastChatUser] <= 0) isGameOver = true; 
                         }
                         sosUser = lastChatPrevSosUser; sosCount = lastChatPrevSosCount;
+                    } 
+                    // ✨ 核心新增：如果裁判判定是正確的成語，給予原發言者 5 分獎勵！
+                    else if (text.includes("✅")) {
+                        if (lastChatUser && scores[lastChatUser]) {
+                            scores[lastChatUser] += 5;
+                        }
                     }
+
                     if (text.includes("💡") && msg.requested_by && scores[msg.requested_by]) {
                         scores[msg.requested_by] -= 5;
                         if (scores[msg.requested_by] <= 0) isGameOver = true;
@@ -613,10 +624,16 @@
             }
         });
 
+        // 💡 修改：呼叫裁判前跳出確認與說明
         document.getElementById('referee-btn').addEventListener('click', async () => {
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
             if(!lastChat) return await showModalAlert("還沒有人發言！");
-            apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
+            
+            const msg = "確定要呼叫 AI 裁判嗎？\n\n💡 功能說明：對上一句成語進行權威審查。\n【❌ 不是成語】：原發言者扣 20 分 (同字接龍扣 30 分)。\n【✅ 是成語】：原發言者獲得 5 分清白獎勵！";
+            
+            if (await showModalAlert(msg, true)) {
+                apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
+            }
         });
 
         // 💡 修改：購買提示前跳出確認與說明
