@@ -237,6 +237,7 @@
         let chatHistory = [];
         let globalRoomData = {};
         let previousScores = null; 
+        let previousPendingIdiom = null; // ✨ 新增這行：追蹤成語變化來判斷是否要等動畫
 
         function showModalAlert(msg, showCancel = false) {
             return new Promise((resolve) => {
@@ -451,13 +452,21 @@
                             else if (diff < 0) pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
                         }
                         
-                        let toastDelay = window.isAnimating ? 3200 : 0; 
+                        // ✨ 終極修復：不再依賴時間差！直接看這回合是不是剛打出 4 字成語
+                        let willAnimate = false;
+                        let newIdiom = newState.pendingIdiom;
+                        if (newIdiom && newIdiom !== previousPendingIdiom && newIdiom.length === 4) {
+                            willAnimate = true; // 發現 4 字成語，確認有動畫要播！
+                        }
+                        
+                        let toastDelay = willAnimate ? 3200 : 0; 
                         setTimeout(() => {
                             pendingToasts.forEach(t => showToast(t.text, t.type));
                         }, toastDelay);
                     }
                     
                     previousScores = { ...(newState.scores || {}) };
+                    previousPendingIdiom = newState.pendingIdiom; // 💡 記住這次的成語，供下次比對
                     gameState = newState;
 
                     let scores = gameState.scores || {};
