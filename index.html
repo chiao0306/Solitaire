@@ -95,7 +95,10 @@
         </div>
         
         <div id="lobby-screen" class="panel">
-            <h2 style="margin-top: 0; border-bottom: 1px solid #4b5563; padding-bottom: 10px;">🚪 進入遊戲大廳</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4b5563; padding-bottom: 10px; margin-bottom: 15px;">
+                <h2 style="margin: 0; border: none; padding: 0;">🚪 進入遊戲大廳</h2>
+                <a href="https://github.com/chiao0306/chiao0306.github.io/blob/main/README.md" target="_blank" style="background: #3b82f6; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: bold; transition: 0.2s;">📖 遊戲規則</a>
+            </div>
             
             <label>選擇或輸入遊戲室</label>
             <input type="text" id="room-input" placeholder="輸入房間名稱...">
@@ -184,7 +187,7 @@
 
         <button class="btn-dark" id="btn-restart" style="margin-bottom: 10px;">🔄 重新開始 (套用上方設定)</button>
         <button class="btn-dark" onclick="window.location.reload()" style="margin-bottom: 10px;">🚪 返回大廳</button>
-        <button class="btn-dark" onclick="alert('請見 GitHub 上的 README 說明書！')">📖 遊戲規則</button>
+        <button class="btn-dark" onclick="window.open('https://github.com/chiao0306/chiao0306.github.io/blob/main/README.md', '_blank')" style="margin-bottom: 10px;">📖 遊戲規則</button>
         
         <hr>
         <div style="color: #ef4444; font-weight: bold; margin-bottom: 10px;">🚨 管理員危險區域</div>
