@@ -297,7 +297,7 @@
             const sendBtn = document.getElementById('send-btn'); const refBtn = document.getElementById('referee-btn');
             const hintBtn = document.getElementById('hint-btn'); const sosBtn = document.getElementById('sos-btn');
             const surBtn = document.getElementById('surrender-btn'); 
-            const startOverlay = document.getElementById('start-overlay'); // 💡 抓取開局大按鈕遮罩
+            const startOverlay = document.getElementById('start-overlay'); 
 
             const myInfoPrefix = `<div style="color: #ccc; font-size: 13px; margin-bottom: 5px;">🏠 房間：${currentRoom} | 👤 ${currentAvatar} ${currentPlayer}</div>`;
 
@@ -313,7 +313,6 @@
             const playerIndex = gameState.playersOrder.indexOf(currentPlayer);
             const hasStarted = chatHistory.some(m => m.type === 'chat' || (m.type === 'system' && m.text.includes("題目為")));
 
-            // 💡 控制 AI 隨機出題遮罩的顯示與隱藏
             startOverlay.style.display = (!hasStarted && !gameState.isGameOver) ? "flex" : "none";
 
             if (!hasStarted) {
@@ -324,14 +323,31 @@
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
 
-            // 💡 裁判按鈕全域開放：任何人都可以按，只要有成語且還沒被判過
             let hasChat = chatHistory.some(m => m.type === 'chat');
             refBtn.disabled = (gameState.alreadyJudged || !hasChat || gameState.isGameOver);
 
+            // 💡 整理「逃生狀態」字串與次數
+            let sosString = "";
+            let remainingSos = 0;
+            if (gameState.sosUser) {
+                remainingSos = 3 - gameState.sosCount;
+                sosString = ` <span style="color: #eab308;">(🚨 逃生中：剩 ${remainingSos} 次)</span>`;
+            }
+
+            // 💡 行動方與非行動方的狀態列更新邏輯
             if (isMyTurn) {
-                turnInfo.innerHTML = hasStarted ? `${myInfoPrefix}🟢 輪到你了！接續「${gameState.lastIdiom}」` : `${myInfoPrefix}🟢 尚未開局，請出題！`;
+                if (hasStarted) {
+                    turnInfo.innerHTML = `${myInfoPrefix}🟢 輪到你了！接續「${gameState.lastIdiom}」${sosString}`;
+                    // ✨ 底下輸入框狀態列 (自己行動時)
+                    msgInput.placeholder = gameState.sosUser === currentPlayer 
+                        ? `🚨 逃生第 ${gameState.sosCount + 1} 擊！請接「${gameState.lastIdiom}」...`
+                        : `🟢 輪到你囉，請接「${gameState.lastIdiom}」...`;
+                } else {
+                    turnInfo.innerHTML = `${myInfoPrefix}🟢 尚未開局，任何人皆可出題！`;
+                    msgInput.placeholder = "你是第一個，請出題開局...";
+                }
                 turnInfo.style.color = "#4CAF50";
-                msgInput.disabled = false; msgInput.placeholder = hasStarted ? `輪到你囉，請接「${gameState.lastIdiom}」` : "你是第一個，請出題...";
+                msgInput.disabled = false; 
                 sendBtn.disabled = false; surBtn.disabled = false;
                 
                 let myHints = gameState.roundHints[currentPlayer] || 0;
@@ -341,8 +357,20 @@
 
                 sosBtn.disabled = !!gameState.sosUser;
             } else {
-                turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${gameState.currentTurn || '其他人'} 發言...`; turnInfo.style.color = "gray";
-                msgInput.disabled = true; msgInput.placeholder = "尚未輪到你...";
+                let currentActor = gameState.currentTurn || '其他人';
+                if (hasStarted) {
+                    turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${currentActor} 接「${gameState.lastIdiom}」${sosString}`;
+                    // ✨ 底下輸入框狀態列 (等待對手行動時)
+                    msgInput.placeholder = gameState.sosUser === currentActor
+                        ? `🚨 緊盯對手：${currentActor} 逃生中 (剩 ${remainingSos} 次)...`
+                        : `⏳ 等待 ${currentActor} 接「${gameState.lastIdiom}」...`;
+                } else {
+                    turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待開局...`;
+                    msgInput.placeholder = "等待任何人出題...";
+                }
+                
+                turnInfo.style.color = "gray";
+                msgInput.disabled = true;
                 sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
                 hintBtn.textContent = "💡 提示";
             }
