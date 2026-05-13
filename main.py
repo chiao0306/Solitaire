@@ -63,31 +63,26 @@ async def send_chat(req: ChatRequest):
 # 引入 firestore 的 ArrayUnion 來更新陣列
 from google.cloud.firestore_v1 import ArrayUnion
 
+# 💡 確保這行在檔案最上方
+from google.cloud.firestore import DELETE_FIELD
+
 @app.post("/system_action")
 async def system_action(req: ActionRequest):
-    # 儲存動作訊息 (包含 join_room, sos_start, 以及我們要新增的 game_over)
+    # 1. 儲存對話紀錄
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
         "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
     })
     
+    # 💡 修改：將 ArrayUnion 改為 Map 結構，紀錄「玩家名: 頭像」
     if req.action_type == "join_room":
         doc_ref = db.collection("system_meta").document("active_rooms")
-        doc_ref.set({ req.room_name: ArrayUnion([req.user_name]) }, merge=True)
-        
-    return {"status": "success"}
-    
-    # 💡 現代科技魔法：如果動作是「加入房間」，就去更新中控簽到表！
-    if req.action_type == "join_room":
-        # 我們建一個新的集合叫 system_meta，裡面放一張 active_rooms 文件
-        doc_ref = db.collection("system_meta").document("active_rooms")
-        # 使用 set(merge=True) 加上 ArrayUnion，確保房間存在，且名字不重複寫入
         doc_ref.set({
-            req.room_name: ArrayUnion([req.user_name])
+            req.room_name: { req.user_name: req.avatar }
         }, merge=True)
         
     return {"status": "success"}
-
+    
 # ====== 修改：重新開始 (每個玩家只保留一筆加入房間的紀錄) ======
 @app.post("/restart_game")
 async def restart_game(req: ActionRequest):
@@ -196,36 +191,23 @@ from google.cloud.firestore_v1 import ArrayRemove, DELETE_FIELD
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
     if req.admin_pwd != ADMIN_PASSWORD:
-        raise HTTPException(status_code=403, detail="密碼錯誤！拒絕存取。")
+        raise HTTPException(status_code=403, detail="密碼錯誤！")
     
     batch = db.batch()
     doc_ref_meta = db.collection("system_meta").document("active_rooms")
     
-    # 💡 情況 A：刪除單一玩家
     if req.action_type == "delete_user" and req.target_user:
-        # 1. 刪除該玩家在該房間的所有對話
-        docs = db.collection(CHAT_COLLECTION)\
-                 .where("room_name", "==", req.room_name)\
-                 .where("user_name", "==", req.target_user).stream()
-        for doc in docs:
-            batch.delete(doc.reference)
+        # 刪除對話
+        docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).where("user_name", "==", req.target_user).stream()
+        for doc in docs: batch.delete(doc.reference)
+        # 💡 修改：從 Map 中移除特定玩家
+        batch.update(doc_ref_meta, { f"{req.room_name}.{req.target_user}": DELETE_FIELD })
         
-        # 2. ✨ 關鍵：同步從大廳的「角色清單」中移除該名字
-        batch.update(doc_ref_meta, {
-            req.room_name: ArrayRemove([req.target_user])
-        })
-        
-    # 💡 情況 B：毀滅性清空房間
     elif req.action_type == "clear_room":
-        # 1. 刪除房間內所有訊息
         docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream()
-        for doc in docs:
-            batch.delete(doc.reference)
-        
-        # 2. ✨ 關鍵：直接把整個房間從簽到表拔掉
-        batch.update(doc_ref_meta, {
-            req.room_name: DELETE_FIELD
-        })
+        for doc in docs: batch.delete(doc.reference)
+        # 徹底移除房間
+        batch.update(doc_ref_meta, { req.room_name: DELETE_FIELD })
         
     batch.commit()
     return {"status": "success"}
