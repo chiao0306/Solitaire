@@ -222,8 +222,10 @@ async def system_action(req: ActionRequest):
             state["playersOrder"].append(req.user_name)
             state["scores"][req.user_name] = 50
             changed = True
-            
-        db.collection("system_meta").document("active_rooms").update({ f"{req.room_name}.{req.target_user}": DELETE_FIELD })
+        
+        db.collection("system_meta").document("active_rooms").set({
+            req.room_name: { req.user_name: req.avatar }
+        }, merge=True)
 
     elif req.action_type == "sos_start":
         state["sosUser"] = req.user_name
@@ -431,7 +433,7 @@ async def admin_action(req: AdminRequest):
         
     elif req.action_type == "clear_room":
         delete_messages_safe(req.room_name)
-        db.collection("system_meta").document("active_rooms").update({ req.room_name: DELETE_FIELD })
+        db.collection("system_meta").document("active_rooms").update({ f"{req.room_name}.{req.target_user}": DELETE_FIELD })
         db.collection(STATE_COLLECTION).document(req.room_name).delete()
         
     return {"status": "success"}
