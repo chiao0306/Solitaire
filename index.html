@@ -223,7 +223,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, query, where, orderBy, onSnapshot, doc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        // ✨ 核心升級 1：引入 limitToLast，這是解決讀取破表的救星！
+        import { getFirestore, collection, query, where, orderBy, onSnapshot, doc, limitToLast } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = { apiKey: "AIzaSyDLbh5GUsAY2vO0MnGDIWysUqdC7KN7BoM", projectId: "solitaire-495623" };
         const API_BASE = "https://solitaire-992925465322.asia-east1.run.app"; 
@@ -232,12 +233,11 @@
         const db = getFirestore(app);
         
         let currentRoom = "", currentPlayer = "", currentAvatar = "😎";
-        let gameState = { lastIdiom: null, currentTurn: null, sosUser: null, sosCount: 0, rejected: false, isGameOver: false, alreadyJudged: false };
+        let gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {} };
         let chatHistory = [];
         let globalRoomData = {};
         let previousScores = null; 
 
-        // 💡 新增：取代瀏覽器原生 alert 與 confirm 的精美彈窗函數
         function showModalAlert(msg, showCancel = false) {
             return new Promise((resolve) => {
                 const dialog = document.getElementById('custom-alert-dialog');
@@ -247,13 +247,9 @@
                 
                 btnCancel.style.display = showCancel ? 'block' : 'none';
                 
-                const cleanup = () => {
-                    btnOk.onclick = null; btnCancel.onclick = null; dialog.close();
-                };
-                
+                const cleanup = () => { btnOk.onclick = null; btnCancel.onclick = null; dialog.close(); };
                 btnOk.onclick = () => { cleanup(); resolve(true); };
                 btnCancel.onclick = () => { cleanup(); resolve(false); };
-                
                 dialog.showModal();
             });
         }
@@ -315,70 +311,7 @@
             document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
         });
 
-        function calculateGameState(history) {
-            let scores = {}; let playersOrder = [];
-            let validIdiom = null, pendingIdiom = null, rejected = false;
-            let sosUser = null, sosCount = 0;
-            let lastChatUser = null, lastChatPrevSosUser = null, lastChatPrevSosCount = 0;
-            let isGameOver = false; let alreadyJudged = false; let roundHints = {}; 
-            let lastChatWasPerfectMatch = false;
-
-            history.forEach(msg => {
-                let mType = msg.type || "chat", user = msg.user_name, text = msg.text;
-                if (user && user !== "System" && !user.includes("AI")) {
-                    if (!(user in scores)) scores[user] = 50;
-                    if (!playersOrder.includes(user)) playersOrder.push(user);
-                }
-
-                if (mType === "game_over") isGameOver = true;
-                if (mType === "system" && text.includes("重新開始")) {
-                    scores = {}; playersOrder = []; validIdiom = null; pendingIdiom = null; rejected = false; isGameOver = false;
-                } else if (mType === "system" && text.includes("題目為")) {
-                    let match = text.match(/「\*\*([^]+?)\*\*」/); validIdiom = match ? match[1] : text.slice(-4);
-                    pendingIdiom = validIdiom; rejected = false; sosUser = null; sosCount = 0; roundHints = {}; 
-                } else if (mType === "sos_start") { sosUser = user; sosCount = 0;
-                } else if (mType === "chat" && user !== "System" && !user.includes("AI")) {
-                    let targetForBonus = rejected ? validIdiom : pendingIdiom;
-                    let isPerfectMatch = (targetForBonus && text && targetForBonus.slice(-1) === text[0]);
-                    if (!rejected) validIdiom = pendingIdiom;
-                    pendingIdiom = text; rejected = false; lastChatUser = user;
-                    lastChatPrevSosUser = sosUser; lastChatPrevSosCount = sosCount; alreadyJudged = false; roundHints = {}; 
-                    lastChatWasPerfectMatch = isPerfectMatch; 
-
-                    if (sosUser === user) {
-                        sosCount++;
-                        if (sosCount === 3) { scores[user] += isPerfectMatch ? 20 : 10; sosUser = null; sosCount = 0; }
-                    } else { scores[user] += isPerfectMatch ? 20 : 10; sosUser = null; sosCount = 0; }
-                } else if (mType === "referee") {
-                    if (text.includes("✅") || text.includes("❌")) alreadyJudged = true;
-                    
-                    if (text.includes("❌")) {
-                        rejected = true;
-                        if (lastChatUser && scores[lastChatUser]) { 
-                            let penalty = lastChatWasPerfectMatch ? 30 : 20; scores[lastChatUser] -= penalty; 
-                            if (scores[lastChatUser] <= 0) isGameOver = true; 
-                        }
-                        sosUser = lastChatPrevSosUser; sosCount = lastChatPrevSosCount;
-                    } 
-                    // ✨ 核心新增：如果裁判判定是正確的成語，給予原發言者 5 分獎勵！
-                    else if (text.includes("✅")) {
-                        if (lastChatUser && scores[lastChatUser]) {
-                            scores[lastChatUser] += 5;
-                        }
-                    }
-
-                    if (text.includes("💡") && msg.requested_by && scores[msg.requested_by]) {
-                        scores[msg.requested_by] -= 5;
-                        if (scores[msg.requested_by] <= 0) isGameOver = true;
-                        roundHints[msg.requested_by] = (roundHints[msg.requested_by] || 0) + 1; 
-                    }
-                }
-            });
-
-            let currentTurn = sosUser || (playersOrder.length > 0 ? (rejected ? lastChatUser : playersOrder[(playersOrder.indexOf(lastChatUser) + 1) % playersOrder.length]) : null);
-            return { scores, lastIdiom: rejected ? validIdiom : pendingIdiom, currentTurn, sosUser, sosCount, rejected, isGameOver, alreadyJudged, roundHints, playersOrder };
-        }
-
+        // ✨ 核心升級 2：calculateGameState() 功成身退，正式刪除！直接使用後端傳來的 gameState 狀態更新介面
         function updateUI() {
             const turnInfo = document.getElementById('turn-info'); const msgInput = document.getElementById('msg-input');
             const sendBtn = document.getElementById('send-btn'); const refBtn = document.getElementById('referee-btn');
@@ -394,20 +327,21 @@
                 return;
             }
 
-            let isMyTurn = false; const playerIndex = gameState.playersOrder.indexOf(currentPlayer);
-            const hasStarted = chatHistory.some(m => m.type === 'chat' || (m.type === 'system' && m.text.includes("題目為")));
+            let isMyTurn = false; 
+            let playersOrder = gameState.playersOrder || [];
+            let scores = gameState.scores || {};
+            let roundHints = gameState.roundHints || {};
+            
+            // 是否已經有題目開局
+            const hasStarted = !!gameState.lastIdiom || !!gameState.pendingIdiom;
 
             startOverlay.style.display = (!hasStarted && !gameState.isGameOver) ? "flex" : "none";
 
-            // 💡 規則更新：判斷現在能不能發言
             if (!hasStarted) {
-                isMyTurn = true; // 沒人開局：誰都可以出題
-            } else if (gameState.playersOrder.length === 1) {
-                // ✨ 核心修改：如果房間只有 1 個人發過言，解除鎖定！
-                // 允許他自己無限接龍，也允許路人隨時打字加入戰局。
                 isMyTurn = true; 
+            } else if (playersOrder.length <= 1) {
+                isMyTurn = true; // 單人模式解除鎖定
             } else {
-                // 一旦有 2 個人以上發言過，就恢復嚴格的排隊輪流機制！
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
 
@@ -417,25 +351,28 @@
             let sosString = ""; let remainingSos = 0;
             if (gameState.sosUser) { remainingSos = 3 - gameState.sosCount; sosString = ` <span style="color: #eab308;">(🚨 逃生中：剩 ${remainingSos} 次)</span>`; }
 
+            let targetWord = gameState.lastIdiom || "";
+
             if (isMyTurn) {
                 if (hasStarted) {
-                    turnInfo.innerHTML = `${myInfoPrefix}🟢 輪到你了！接續「${gameState.lastIdiom}」${sosString}`;
-                    msgInput.placeholder = gameState.sosUser === currentPlayer ? `🚨 逃生第 ${gameState.sosCount + 1} 擊！請接「${gameState.lastIdiom}」...` : `🟢 輪到你囉，請接「${gameState.lastIdiom}」...`;
+                    turnInfo.innerHTML = `${myInfoPrefix}🟢 輪到你了！接續「${targetWord}」${sosString}`;
+                    msgInput.placeholder = gameState.sosUser === currentPlayer ? `🚨 逃生第 ${gameState.sosCount + 1} 擊！請接「${targetWord}」...` : `🟢 輪到你囉，請接「${targetWord}」...`;
                 } else {
                     turnInfo.innerHTML = `${myInfoPrefix}🟢 尚未開局，任何人皆可出題！`; msgInput.placeholder = "你是第一個，請出題開局...";
                 }
                 turnInfo.style.color = "#4CAF50"; msgInput.disabled = false; sendBtn.disabled = false; surBtn.disabled = false;
                 
-                let myHints = gameState.roundHints[currentPlayer] || 0;
-                if (myHints === 0) { hintBtn.textContent = "💡 提示 (1/2)"; hintBtn.disabled = (gameState.scores[currentPlayer] <= 5); } 
-                else if (myHints === 1) { hintBtn.textContent = "💡 提示 (2/2)"; hintBtn.disabled = (gameState.scores[currentPlayer] <= 5); } 
+                let myScore = scores[currentPlayer] || 0;
+                let myHints = roundHints[currentPlayer] || 0;
+                if (myHints === 0) { hintBtn.textContent = "💡 提示 (1/2)"; hintBtn.disabled = (myScore <= 5); } 
+                else if (myHints === 1) { hintBtn.textContent = "💡 提示 (2/2)"; hintBtn.disabled = (myScore <= 5); } 
                 else { hintBtn.textContent = "🚫 提示耗盡"; hintBtn.disabled = true; }
                 sosBtn.disabled = !!gameState.sosUser;
             } else {
                 let currentActor = gameState.currentTurn || '其他人';
                 if (hasStarted) {
-                    turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${currentActor} 接「${gameState.lastIdiom}」${sosString}`;
-                    msgInput.placeholder = gameState.sosUser === currentActor ? `🚨 緊盯對手：${currentActor} 逃生中 (剩 ${remainingSos} 次)...` : `⏳ 等待 ${currentActor} 接「${gameState.lastIdiom}」...`;
+                    turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${currentActor} 接「${targetWord}」${sosString}`;
+                    msgInput.placeholder = gameState.sosUser === currentActor ? `🚨 緊盯對手：${currentActor} 逃生中 (剩 ${remainingSos} 次)...` : `⏳ 等待 ${currentActor} 接「${targetWord}」...`;
                 } else { turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待開局...`; msgInput.placeholder = "等待任何人出題..."; }
                 
                 turnInfo.style.color = "gray"; msgInput.disabled = true; sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
@@ -471,6 +408,7 @@
             } catch(e) { await showModalAlert("連線後端失敗！"); return false; }
         }
 
+        // ====== 雙通道監聽：進入房間 ======
         document.getElementById('join-btn').addEventListener('click', async () => {
             currentRoom = document.getElementById('room-input').value.trim();
             currentPlayer = document.getElementById('player-input').value.trim();
@@ -485,7 +423,6 @@
 
             if (isNameTaken) {
                 const confirmMsg = `⚠️ 名字撞了！「${currentPlayer}」已經在這個房間裡了喔！\n\n👉 如果你是「斷線重新連線」，請按【確定】繼續。\n👉 如果你是「新玩家」，請按【取消】並更換一個名字。`;
-                // 💡 使用新版自訂彈窗
                 if (!(await showModalAlert(confirmMsg, true))) return; 
             }
 
@@ -496,7 +433,46 @@
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('menu-btn').style.display = 'block';
 
-            const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"));
+            // ✨ 通道 1：監聽「房間狀態」，負責計分與介面更新 (極低消耗)
+            const stateRef = doc(db, "room_states", currentRoom);
+            onSnapshot(stateRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    let newState = docSnap.data();
+                    
+                    if (previousScores !== null) {
+                        let pendingToasts = [];
+                        let oldScores = previousScores || {};
+                        let newScores = newState.scores || {};
+                        for (let player in newScores) {
+                            let oldScore = oldScores[player] || 50;
+                            let newScore = newScores[player];
+                            let diff = newScore - oldScore;
+                            if (diff > 0) pendingToasts.push({ text: `🎉 ${player} +${diff} 分`, type: "success" });
+                            else if (diff < 0) pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
+                        }
+                        
+                        let toastDelay = window.isAnimating ? 3200 : 0; 
+                        setTimeout(() => {
+                            pendingToasts.forEach(t => showToast(t.text, t.type));
+                        }, toastDelay);
+                    }
+                    
+                    previousScores = { ...(newState.scores || {}) };
+                    gameState = newState;
+
+                    let scores = gameState.scores || {};
+                    let scoreHTML = Object.entries(scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
+                    document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
+                    updateUI();
+                } else {
+                    // 如果房間剛開還沒紀錄，建立一個空的暫存狀態
+                    gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {} };
+                    updateUI();
+                }
+            });
+
+            // ✨ 通道 2：監聽「對話區」，並加入 limitToLast(50) 完美省下讀取次數！
+            const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"), limitToLast(50));
             onSnapshot(q, (snapshot) => {
                 const chatBox = document.getElementById('chat-box');
                 chatBox.innerHTML = ""; chatHistory = [];
@@ -528,7 +504,6 @@
 
                     let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar || '😎'} ${msg.user_name}</div>` : "";
                     
-                    // ✨ 核心新增：在裁判判決上方，標示出是誰申請的
                     if (mType === "referee" && msg.requested_by) {
                         if (msg.text.includes("✅") || msg.text.includes("❌")) {
                             infoHtml = `<div class="msg-info" style="text-align: center; color: #94a3b8; font-size: 13px; margin-bottom: 6px;">👨‍⚖️ ${msg.requested_by} 申請了裁判判決</div>`;
@@ -548,59 +523,18 @@
                 });
 
                 chatBox.scrollTop = chatBox.scrollHeight;
-                gameState = calculateGameState(chatHistory);
                 
-                if (previousScores !== null) {
-                    // ✨ 1. 判斷最後一句話是不是 4 個字，會不會觸發全螢幕動畫？
-                    let willAnimate = false;
-                    let latestMsg = chatHistory[chatHistory.length - 1];
-                    if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
-                        let msgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
-                        if (window.lastAnimatedMsgId !== msgId) {
-                            willAnimate = true;
-                            triggerFlashyEffect(latestMsg.user_name, latestMsg.text);
-                            window.lastAnimatedMsgId = msgId;
-                        }
-                    }
-
-                    // ✨ 2. 核心修復：在時間暫停前，先把「有變動的分數」算好並寫進小本本（陣列）裡
-                    let pendingToasts = [];
-                    for (let player in gameState.scores) {
-                        let oldScore = previousScores[player] || 50; 
-                        let newScore = gameState.scores[player];
-                        let diff = newScore - oldScore;
-                        
-                        if (diff > 0) {
-                            pendingToasts.push({ text: `🎉 ${player} +${diff} 分`, type: "success" });
-                        } else if (diff < 0) {
-                            pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
-                        }
-                    }
-
-                    // ✨ 3. 如果有大絕招動畫，加分跳窗就延遲 3.2 秒！
-                    let toastDelay = willAnimate ? 3200 : 0; 
-                    
-                    // 時間到了之後，把小本本裡的提示一個一個秀出來
-                    setTimeout(() => {
-                        pendingToasts.forEach(toastMsg => {
-                            showToast(toastMsg.text, toastMsg.type);
-                        });
-                    }, toastDelay);
-
-                } else {
-                    // 第一次載入時，把最後一則訊息記下來，避免一進房間就播動畫
-                    let latestMsg = chatHistory[chatHistory.length - 1];
-                    if (latestMsg && latestMsg.type === "chat") {
-                        window.lastAnimatedMsgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
+                // 動畫與狀態分開後，用一個全域變數做時間橋樑，避免加分彈窗打架
+                let latestMsg = chatHistory[chatHistory.length - 1];
+                if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
+                    let msgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
+                    if (window.lastAnimatedMsgId !== msgId) {
+                        window.isAnimating = true;
+                        triggerFlashyEffect(latestMsg.user_name, latestMsg.text);
+                        window.lastAnimatedMsgId = msgId;
+                        setTimeout(() => { window.isAnimating = false; }, 3200);
                     }
                 }
-                
-                // 記錄完畢後才更新歷史分數
-                previousScores = { ...gameState.scores };
-
-                let scoreHTML = Object.entries(gameState.scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
-                document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
-                updateUI();
             });
 
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar });
@@ -615,39 +549,39 @@
             let isSosFinishing = (gameState.sosUser === currentPlayer && gameState.sosCount === 2);
             let ignoreTone = (gameState.sosUser === currentPlayer && gameState.sosCount === 0);
             
-            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: gameState.lastIdiom, ignore_tone: ignoreTone });
+            // 💡 改版：從後端的 gameState 中取得真正的上一句成語
+            let validLastIdiom = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
+
+            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: validLastIdiom, ignore_tone: ignoreTone });
             if (success) {
                 document.getElementById('msg-input').value = "";
                 if (isSosFinishing) apiCall('/system_action', { room_name: currentRoom, user_name: "System", action_type: "system", text: `【系統】🎉 恭喜 **${currentPlayer}** 完成 3 連擊逃脫成功！`, avatar: "" });
             }
         });
 
-        // 💡 修改：呼叫裁判前跳出確認與說明
         document.getElementById('referee-btn').addEventListener('click', async () => {
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
             if(!lastChat) return await showModalAlert("還沒有人發言！");
             
             const msg = "確定要呼叫 AI 裁判嗎？\n\n💡 功能說明：對上一句成語進行權威審查。\n【❌ 不是成語】：原發言者扣 20 分 (同字接龍扣 30 分)。\n【✅ 是成語】：原發言者獲得 5 分清白獎勵！";
-            
             if (await showModalAlert(msg, true)) {
                 apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
             }
         });
 
-        // 💡 修改：購買提示前跳出確認與說明
         document.getElementById('hint-btn').addEventListener('click', async () => {
-            if(!gameState.lastIdiom) return await showModalAlert("還沒有題目！");
+            let targetWord = gameState.lastIdiom;
+            if(!targetWord) return await showModalAlert("還沒有題目！");
             
             const msg = "確定要花費分數購買提示嗎？\n\n💡 功能說明：每次提示將扣除 5 分。\n第一階段：提供下一句建議成語的「第三個字」。\n第二階段：由 AI 進行成語意思解釋（不含標點與原字）。";
             
             if (await showModalAlert(msg, true)) {
-                let myHints = gameState.roundHints[currentPlayer] || 0;
+                let myHints = (gameState.roundHints || {})[currentPlayer] || 0;
                 let actionType = myHints === 0 ? "hint_1" : "hint_2"; 
-                apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
+                apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: targetWord });
             }
         });
 
-        // 💡 修改：發動求生前跳出確認與說明
         document.getElementById('sos-btn').addEventListener('click', async () => {
             const msg = "確定要發動「換聲調求生」嗎？\n\n💡 功能說明：發動後進入 3 連擊模式。第一擊可無視聲調接龍（例如：ㄒㄧˊ 可接 ㄒㄧ），順利完成 3 連擊後可獲得額外積分並成功逃脫！";
             if (await showModalAlert(msg, true)) {

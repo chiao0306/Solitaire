@@ -8,6 +8,7 @@ import google.generativeai as genai
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pypinyin import pinyin, Style
+from google.cloud.firestore_v1 import DELETE_FIELD
 
 app = FastAPI()
 app.add_middleware(
@@ -34,7 +35,8 @@ custom_safety_settings = [
 ]
 
 CHAT_COLLECTION = "chat_messages"
-ADMIN_PASSWORD = "0306" # 👈 你的管理員密碼
+STATE_COLLECTION = "room_states"  # ✨ 新增：房間狀態中心
+ADMIN_PASSWORD = "0306"
 
 class ChatRequest(BaseModel):
     room_name: str; user_name: str; text: str; avatar: str; last_idiom: Optional[str] = None; ignore_tone: bool = False
@@ -43,19 +45,11 @@ class ActionRequest(BaseModel):
 class AdminRequest(BaseModel):
     room_name: str; admin_pwd: str; action_type: str; target_user: Optional[str] = None
 
-# 💡 新增：台灣讀音補丁 (修正兩岸讀音差異)
+# ✨ 台灣讀音補丁
 from pypinyin import load_single_dict
-
-# 這裡列出常見兩岸發音不同的字，統一改為台灣標準 (二聲 xí 等)
 taiwan_pronunciation_patch = {
-    ord('惜'): 'xí',
-    ord('息'): 'xí',
-    ord('媳'): 'xí',
-    ord('擊'): 'jí', # 台灣唸ㄐㄧˊ，對岸唸ㄐㄧ
-    ord('期'): 'qí', # 台灣唸ㄑㄧˊ，對岸唸ㄑㄧ
-    ord('框'): 'kuāng',
-    ord('誰'): 'shéi',
-    # 你之後若發現還有哪個字被擋，就在這裡補上： ord('字'): '拼音'
+    ord('惜'): 'xí', ord('息'): 'xí', ord('媳'): 'xí', ord('擊'): 'jí', 
+    ord('期'): 'qí', ord('框'): 'kuāng', ord('誰'): 'shéi',
 }
 load_single_dict(taiwan_pronunciation_patch)
 
@@ -66,79 +60,190 @@ def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
     first_p = pinyin(new_idiom[0], style=style, heteronym=True)[0]
     return bool(set(last_p).intersection(set(first_p)))
 
+# ==========================================
+# ✨ 核心升級：後端狀態引擎 (State Engine)
+# ==========================================
+def get_default_state():
+    return {
+        "scores": {}, "playersOrder": [], "currentTurn": None,
+        "lastIdiom": None, "pendingIdiom": None, "rejected": False,
+        "sosUser": None, "sosCount": 0, "lastChatUser": None,
+        "lastChatPrevSosUser": None, "lastChatPrevSosCount": 0,
+        "lastChatWasPerfectMatch": False, "isGameOver": False,
+        "alreadyJudged": False, "roundHints": {}
+    }
+
+def update_current_turn(state):
+    if state.get("sosUser"):
+        state["currentTurn"] = state["sosUser"]
+        return
+    players = state.get("playersOrder", [])
+    if not players:
+        state["currentTurn"] = None
+        return
+    last_user = state.get("lastChatUser")
+    if state.get("rejected"):
+        state["currentTurn"] = last_user
+        return
+    if last_user in players:
+        idx = players.index(last_user)
+        state["currentTurn"] = players[(idx + 1) % len(players)]
+    else:
+        state["currentTurn"] = None
+
+def get_room_state(room_name):
+    doc = db.collection(STATE_COLLECTION).document(room_name).get()
+    return doc.to_dict() if doc.exists else get_default_state()
+
+def save_room_state(room_name, state):
+    state["updated_at"] = firestore.SERVER_TIMESTAMP
+    db.collection(STATE_COLLECTION).document(room_name).set(state)
+
+# 安全刪除大量訊息的小幫手 (避開 Firebase 500 筆限制)
+def delete_messages_safe(room_name, target_user=None):
+    query = db.collection(CHAT_COLLECTION).where("room_name", "==", room_name)
+    if target_user:
+        query = query.where("user_name", "==", target_user)
+    docs = list(query.stream())
+    for i in range(0, len(docs), 400):
+        batch = db.batch()
+        for doc in docs[i:i+400]:
+            batch.delete(doc.reference)
+        batch.commit()
+
+# ==========================================
+# 遊戲 API 路由
+# ==========================================
+
 @app.post("/send_chat")
 async def send_chat(req: ChatRequest):
-    if not check_idiom_connection(req.last_idiom, req.text, req.ignore_tone):
+    state = get_room_state(req.room_name)
+    
+    # 雙重驗證：從後端狀態拿真正的上一句成語
+    targetForBonus = state.get("lastIdiom") if state.get("rejected") else state.get("pendingIdiom")
+    valid_target = targetForBonus if targetForBonus else req.last_idiom
+    
+    if not check_idiom_connection(valid_target, req.text, req.ignore_tone):
         raise HTTPException(status_code=400, detail="拼音或聲調不符！請重新輸入。")
+        
+    isPerfectMatch = False
+    if targetForBonus and req.text and targetForBonus[-1] == req.text[0]:
+        isPerfectMatch = True
+
+    if not state.get("rejected"):
+        state["lastIdiom"] = state.get("pendingIdiom")
+    state["pendingIdiom"] = req.text
+    state["rejected"] = False
+
+    state["lastChatPrevSosUser"] = state.get("sosUser")
+    state["lastChatPrevSosCount"] = state.get("sosCount")
+    state["lastChatUser"] = req.user_name
+    state["lastChatWasPerfectMatch"] = isPerfectMatch
+    state["alreadyJudged"] = False
+    state["roundHints"] = {}
+
+    user = req.user_name
+    if state.get("sosUser") == user:
+        state["sosCount"] = state.get("sosCount", 0) + 1
+        if state["sosCount"] >= 3:
+            state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
+            state["sosUser"] = None
+            state["sosCount"] = 0
+    else:
+        state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
+        state["sosUser"] = None
+        state["sosCount"] = 0
+
+    update_current_turn(state)
+    save_room_state(req.room_name, state)
+
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
         "type": "chat", "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
     })
     return {"status": "success"}
 
-# 引入 firestore 的 ArrayUnion 來更新陣列
-from google.cloud.firestore_v1 import ArrayUnion
-
-# 💡 確保這行在檔案最上方
-from google.cloud.firestore import DELETE_FIELD
-
 @app.post("/system_action")
 async def system_action(req: ActionRequest):
-    # 1. 儲存對話紀錄
+    state = get_room_state(req.room_name)
+    changed = False
+
+    if req.action_type == "join_room":
+        if req.user_name not in state.get("playersOrder", []):
+            state["playersOrder"].append(req.user_name)
+            state["scores"][req.user_name] = 50
+            changed = True
+        # 更新大廳名單
+        db.collection("system_meta").document("active_rooms").set({
+            req.room_name: { req.user_name: req.avatar }
+        }, merge=True)
+    elif req.action_type == "sos_start":
+        state["sosUser"] = req.user_name
+        state["sosCount"] = 0
+        changed = True
+    elif req.action_type == "game_over":
+        state["isGameOver"] = True
+        changed = True
+
+    if changed:
+        update_current_turn(state)
+        save_room_state(req.room_name, state)
+
     db.collection(CHAT_COLLECTION).add({
         "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
         "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
     })
-    
-    # 💡 修改：將 ArrayUnion 改為 Map 結構，紀錄「玩家名: 頭像」
-    if req.action_type == "join_room":
-        doc_ref = db.collection("system_meta").document("active_rooms")
-        doc_ref.set({
-            req.room_name: { req.user_name: req.avatar }
-        }, merge=True)
-        
-    return {"status": "success"}
-    
-# ====== 修改：重新開始 (每個玩家只保留一筆加入房間的紀錄) ======
-@app.post("/restart_game")
-async def restart_game(req: ActionRequest):
-    # 抓出房間內所有對話
-    docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream()
-    batch = db.batch()
-    seen_users = set()
-
-    for doc in docs:
-        data = doc.to_dict()
-        m_type = data.get("type")
-        user_name = data.get("user_name")
-
-        # 💡 判斷邏輯：如果是 join_room 訊息，且這個人還沒被保留過，我們就放過它
-        if m_type == "join_room" and user_name not in seen_users:
-            seen_users.add(user_name)
-            # 不執行刪除，保留這筆當作角色的「存在證明」
-        else:
-            # 其他的所有對話、多餘的加入通知，全部無情刪除
-            batch.delete(doc.reference)
-
-    batch.commit()
     return {"status": "success"}
 
 @app.post("/call_referee")
 async def call_referee(req: ActionRequest):
     prompt = f"請判斷「{req.target_text}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
     res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+    result_text = res.text.strip()
     
+    state = get_room_state(req.room_name)
+    state["alreadyJudged"] = True
+    
+    if '❌' in result_text:
+        state["rejected"] = True
+        last_user = state.get("lastChatUser")
+        if last_user and last_user in state.get("scores", {}):
+            penalty = 30 if state.get("lastChatWasPerfectMatch") else 20
+            state["scores"][last_user] -= penalty
+            if state["scores"][last_user] <= 0:
+                state["isGameOver"] = True
+        state["sosUser"] = state.get("lastChatPrevSosUser")
+        state["sosCount"] = state.get("lastChatPrevSosCount")
+    elif '✅' in result_text:
+        last_user = state.get("lastChatUser")
+        if last_user and last_user in state.get("scores", {}):
+            state["scores"][last_user] += 5
+            
+    update_current_turn(state)
+    save_room_state(req.room_name, state)
+
     db.collection(CHAT_COLLECTION).add({
-        "room_name": req.room_name, "user_name": "Referee (AI)", "text": res.text.strip(), 
-        "type": "referee", 
-        "requested_by": req.user_name, # ✨ 關鍵新增：紀錄是誰呼叫了裁判
-        "timestamp": firestore.SERVER_TIMESTAMP
+        "room_name": req.room_name, "user_name": "Referee (AI)", "text": result_text, 
+        "type": "referee", "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
     })
     return {"status": "success"}
 
 @app.post("/buy_hint")
 async def buy_hint(req: ActionRequest):
-    # 💡 第一階段提示：給出第三個字
+    state = get_room_state(req.room_name)
+    user = req.user_name
+    
+    state["scores"][user] = state.get("scores", {}).get(user, 50) - 5
+    if state["scores"][user] <= 0:
+        state["isGameOver"] = True
+    
+    hints = state.get("roundHints", {})
+    hints[user] = hints.get(user, 0) + 1
+    state["roundHints"] = hints
+    
+    update_current_turn(state)
+    save_room_state(req.room_name, state)
+
     if req.action_type == "hint_1":
         prompt = f"請給出一個以「{req.target_text[-1]}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
         res = model.generate_content(prompt, safety_settings=custom_safety_settings)
@@ -151,25 +256,12 @@ async def buy_hint(req: ActionRequest):
         })
         return {"status": "success"}
     
-    # 💡 第二階段提示：解釋成語意思
     elif req.action_type == "hint_2":
-        # 💡 避開 Firebase 討厭的索引限制：我們只做簡單篩選，把資料抓出來後用 Python 自己找最後一個
-        docs = db.collection(CHAT_COLLECTION)\
-                 .where("room_name", "==", req.room_name)\
-                 .where("requested_by", "==", req.user_name)\
-                 .where("type", "==", "referee")\
-                 .stream()
+        docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).where("requested_by", "==", req.user_name).where("type", "==", "referee").stream()
+        hint_records = [d.to_dict() for d in docs if d.to_dict().get("hint_answer") and d.to_dict().get("timestamp")]
         
-        # 把有提示解答的紀錄挑出來
-        hint_records = []
-        for doc in docs:
-            data = doc.to_dict()
-            if data.get("hint_answer") and data.get("timestamp"):
-                hint_records.append(data)
-                
         target_idiom = None
         if hint_records:
-            # 用 Python 自己根據時間排序，抓最後一筆 (也就是最新買的那個)
             hint_records.sort(key=lambda x: x.get("timestamp"))
             target_idiom = hint_records[-1].get("hint_answer")
             
@@ -192,54 +284,85 @@ async def random_topic(req: ActionRequest):
     
     if res and res.text:
         idiom = res.text.strip()[:4]
+        state = get_room_state(req.room_name)
+        state["lastIdiom"] = idiom
+        state["pendingIdiom"] = idiom
+        state["rejected"] = False
+        state["sosUser"] = None
+        state["sosCount"] = 0
+        state["roundHints"] = {}
+        update_current_turn(state)
+        save_room_state(req.room_name, state)
+
         db.collection(CHAT_COLLECTION).add({
-            "room_name": req.room_name, 
-            "user_name": "System", 
+            "room_name": req.room_name, "user_name": "System", 
             "text": f"【系統】遊戲開始！題目為「**{idiom}**」", 
-            "type": "system", 
-            "timestamp": firestore.SERVER_TIMESTAMP
+            "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
         })
         return {"status": "success"}
     else:
         raise HTTPException(status_code=500, detail="AI 出題失敗，請重試！")
 
-# 💡 記得在檔案最上方或是這個 function 裡面引入 ArrayRemove
-from google.cloud.firestore_v1 import ArrayRemove, DELETE_FIELD
+@app.post("/restart_game")
+async def restart_game(req: ActionRequest):
+    state = get_room_state(req.room_name)
+    players = state.get("playersOrder", [])
+    
+    new_state = get_default_state()
+    new_state["playersOrder"] = players
+    for p in players:
+        new_state["scores"][p] = 50
+    update_current_turn(new_state)
+    save_room_state(req.room_name, new_state)
+
+    # 刪除多餘訊息，保留每人一筆 Join
+    docs = list(db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream())
+    seen_users = set()
+    to_delete = []
+    
+    for doc in docs:
+        data = doc.to_dict()
+        if data.get("type") == "join_room" and data.get("user_name") not in seen_users:
+            seen_users.add(data.get("user_name"))
+        else:
+            to_delete.append(doc.reference)
+            
+    for i in range(0, len(to_delete), 400):
+        batch = db.batch()
+        for ref in to_delete[i:i+400]:
+            batch.delete(ref)
+        batch.commit()
+        
+    return {"status": "success"}
 
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
     if req.admin_pwd != ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="密碼錯誤！")
     
-    batch = db.batch()
+    state = get_room_state(req.room_name)
     doc_ref_meta = db.collection("system_meta").document("active_rooms")
     
     if req.action_type == "delete_user" and req.target_user:
-        # 刪除對話
-        docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).where("user_name", "==", req.target_user).stream()
-        for doc in docs: batch.delete(doc.reference)
-        # 💡 修改：從 Map 中移除特定玩家
-        batch.update(doc_ref_meta, { f"{req.room_name}.{req.target_user}": DELETE_FIELD })
+        delete_messages_safe(req.room_name, req.target_user)
+        db.collection("system_meta").document("active_rooms").set({ f"{req.room_name}.{req.target_user}": DELETE_FIELD }, merge=True)
+        
+        if req.target_user in state.get("playersOrder", []):
+            state["playersOrder"].remove(req.target_user)
+        if req.target_user in state.get("scores", {}):
+            del state["scores"][req.target_user]
+            
+        update_current_turn(state)
+        save_room_state(req.room_name, state)
         
     elif req.action_type == "clear_room":
-        docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).stream()
-        for doc in docs: batch.delete(doc.reference)
-        # 徹底移除房間
-        batch.update(doc_ref_meta, { req.room_name: DELETE_FIELD })
+        delete_messages_safe(req.room_name)
+        db.collection("system_meta").document("active_rooms").update({ req.room_name: DELETE_FIELD })
+        db.collection(STATE_COLLECTION).document(req.room_name).delete()
         
-    batch.commit()
     return {"status": "success"}
     
-# ====== 把這段加在 main.py 的最下面 ======
-
 @app.get("/get_rooms")
 async def get_rooms():
-    # 💡 現代科技魔法：直接讀取這張簽到表。花費讀取次數：永遠 1 次！
-    doc_ref = db.collection("system_meta").document("active_rooms")
-    doc = doc_ref.get()
-    
-    if doc.exists:
-        # 回傳長這樣：{"房間A": ["玩家1", "玩家2"], "房間B": ["玩家3"]}
-        return {"status": "success", "data": doc.to_dict()}
-    
-    return {"status": "success", "data": {}}
+    doc = db.collection("system_meta").document("active_rooms").get()
+    return {"status": "success", "data": doc.to_dict() if doc.exists else {}}
