@@ -70,7 +70,8 @@ def get_default_state():
         "sosUser": None, "sosCount": 0, "lastChatUser": None,
         "lastChatPrevSosUser": None, "lastChatPrevSosCount": 0,
         "lastChatWasPerfectMatch": False, "isGameOver": False,
-        "alreadyJudged": False, "roundHints": {}
+        "alreadyJudged": False, "roundHints": {},
+        "surrenderUser": None  # ✨ 新增：紀錄誰投降了
     }
 
 def update_current_turn(state):
@@ -184,14 +185,20 @@ async def system_action(req: ActionRequest):
         changed = True
     elif req.action_type == "game_over":
         state["isGameOver"] = True
+        state["surrenderUser"] = req.user_name  # ✨ 紀錄是誰投降的
         changed = True
 
     if changed:
         update_current_turn(state)
         save_room_state(req.room_name, state)
 
+    # ✨ 這裡修改了聊天室顯示的文字
+    display_text = req.text
+    if req.action_type == "game_over":
+        display_text = f"【系統】{req.user_name} 投降了 🏳️"
+
     db.collection(CHAT_COLLECTION).add({
-        "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
+        "room_name": req.room_name, "user_name": req.user_name, "text": display_text, 
         "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
     })
     return {"status": "success"}
