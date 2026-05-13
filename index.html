@@ -381,7 +381,7 @@
                 let currentActor = gameState.currentTurn || '其他人';
                 if (hasStarted) {
                     turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${currentActor} 接「${targetWord}」${sosString}`;
-                    msgInput.placeholder = gameState.sosUser === currentActor ? `🚨 緊盯對手：${currentActor} 逃生中 (剩 ${remainingSos} 次)...` : `⏳ 等待 ${currentActor} 接「${targetWord}」...`;
+                    msgInput.placeholder = gameState.sosUser === currentActor ? `🚨：${currentActor} 逃生中 (剩 ${remainingSos} 次)...` : `⏳ 等待 ${currentActor} 接「${targetWord}」...`;
                 } else { turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待開局...`; msgInput.placeholder = "等待任何人出題..."; }
                 
                 turnInfo.style.color = "gray"; msgInput.disabled = true; sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
