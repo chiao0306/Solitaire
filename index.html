@@ -370,27 +370,6 @@
             
             const hasStarted = !!gameState.lastIdiom || !!gameState.pendingIdiom;
 
-            // ✨ 倒數三回合畫面中央提醒邏輯
-            if (gameState.maxRounds > 0 && gameState.trackedPlayers && gameState.trackedPlayers.length > 0) {
-                let remaining = gameState.maxRounds - gameState.currentRound;
-                // 當前輪到開局第一人，且進入最後 3 回合 (remaining === 3, 2, 1)
-                if (gameState.currentTurn === gameState.trackedPlayers[0] && remaining <= 3 && remaining > 0) {
-                    // 防止同一回合重複跳出
-                    if (window.lastAlertedRound !== gameState.currentRound) {
-                        window.lastAlertedRound = gameState.currentRound;
-                        
-                        // 利用現有的 Toast 系統客製化超大字體與較長的停留時間
-                        const container = document.getElementById('toast-container');
-                        const toast = document.createElement('div');
-                        toast.className = 'toast warning'; 
-                        toast.innerHTML = `<div style="font-size: 32px; font-weight: 900; padding: 10px;">🚨 倒數 ${remaining} 回合 🚨</div>`;
-                        toast.style.animationDuration = "3.5s"; // 讓它在畫面中間停留久一點
-                        container.appendChild(toast);
-                        setTimeout(() => toast.remove(), 3500); 
-                    }
-                }
-            }
-
             startOverlay.style.display = (!hasStarted && !gameState.isGameOver) ? "flex" : "none";
 
             if (!hasStarted) {
