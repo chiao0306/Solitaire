@@ -542,21 +542,43 @@
                 gameState = calculateGameState(chatHistory);
                 
                 if (previousScores !== null) {
-                    let oldScore = previousScores[currentPlayer] || 50; let newScore = gameState.scores[currentPlayer] || 50; let diff = newScore - oldScore;
-                    let willAnimate = false; let latestMsg = chatHistory[chatHistory.length - 1];
+                    // ✨ 1. 判斷最後一句話是不是 4 個字，會不會觸發全螢幕動畫？
+                    let willAnimate = false;
+                    let latestMsg = chatHistory[chatHistory.length - 1];
                     if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
                         let msgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
                         if (window.lastAnimatedMsgId !== msgId) {
-                            willAnimate = true; triggerFlashyEffect(latestMsg.user_name, latestMsg.text); window.lastAnimatedMsgId = msgId;
+                            willAnimate = true;
+                            triggerFlashyEffect(latestMsg.user_name, latestMsg.text);
+                            window.lastAnimatedMsgId = msgId;
                         }
                     }
+
+                    // ✨ 2. 如果有大絕招動畫，加分跳窗就延遲 3.2 秒！
                     let toastDelay = willAnimate ? 3200 : 0; 
+                    
                     setTimeout(() => {
-                        if (diff > 0) showToast(`🎉 +${diff} 分`, "success"); else if (diff < 0) showToast(`💥 ${diff} 分`, "danger");
+                        // ✨ 3. 核心修改：掃描「所有人」的分數變化
+                        for (let player in gameState.scores) {
+                            let oldScore = previousScores[player] || 50; // 預設 50 分開始
+                            let newScore = gameState.scores[player];
+                            let diff = newScore - oldScore;
+                            
+                            // 如果有分數變動，就彈出包含名字的提示！
+                            if (diff > 0) {
+                                showToast(`🎉 ${player} +${diff} 分`, "success");
+                            } else if (diff < 0) {
+                                showToast(`💥 ${player} ${diff} 分`, "danger");
+                            }
+                        }
                     }, toastDelay);
+
                 } else {
+                    // 第一次載入時，把最後一則訊息記下來，避免一進房間就播動畫
                     let latestMsg = chatHistory[chatHistory.length - 1];
-                    if (latestMsg && latestMsg.type === "chat") window.lastAnimatedMsgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
+                    if (latestMsg && latestMsg.type === "chat") {
+                        window.lastAnimatedMsgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
+                    }
                 }
                 previousScores = { ...gameState.scores };
 
