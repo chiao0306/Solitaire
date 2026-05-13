@@ -43,6 +43,22 @@ class ActionRequest(BaseModel):
 class AdminRequest(BaseModel):
     room_name: str; admin_pwd: str; action_type: str; target_user: Optional[str] = None
 
+# 💡 新增：台灣讀音補丁 (修正兩岸讀音差異)
+from pypinyin import load_single_dict
+
+# 這裡列出常見兩岸發音不同的字，統一改為台灣標準 (二聲 xí 等)
+taiwan_pronunciation_patch = {
+    ord('惜'): 'xí',
+    ord('息'): 'xí',
+    ord('媳'): 'xí',
+    ord('擊'): 'jí', # 台灣唸ㄐㄧˊ，對岸唸ㄐㄧ
+    ord('期'): 'qí', # 台灣唸ㄑㄧˊ，對岸唸ㄑㄧ
+    ord('框'): 'kuāng',
+    ord('誰'): 'shéi',
+    # 你之後若發現還有哪個字被擋，就在這裡補上： ord('字'): '拼音'
+}
+load_single_dict(taiwan_pronunciation_patch)
+
 def check_idiom_connection(last_idiom, new_idiom, ignore_tone=False):
     if not last_idiom or not new_idiom: return True
     style = Style.NORMAL if ignore_tone else Style.TONE3
