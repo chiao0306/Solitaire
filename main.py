@@ -406,17 +406,28 @@ async def admin_action(req: AdminRequest):
         raise HTTPException(status_code=403, detail="密碼錯誤！")
     
     state = get_room_state(req.room_name)
+    doc_ref_meta = db.collection("system_meta").document("active_rooms")
     
     if req.action_type == "delete_user" and req.target_user:
         delete_messages_safe(req.room_name, req.target_user)
-        db.collection("system_meta").document("active_rooms").set({ f"{req.room_name}.{req.target_user}": DELETE_FIELD }, merge=True)
+        
+        # ✨ 100% 安全的大廳同步刪除法 (先讀取 -> 修改 -> 存回)
+        snap = doc_ref_meta.get()
+        if snap.exists:
+            meta_data = snap.to_dict()
+            if req.room_name in meta_data and req.target_user in meta_data[req.room_name]:
+                del meta_data[req.room_name][req.target_user]
+                # 💡 如果房間被刪到空無一人，順便把整個房間從大廳清除！
+                if not meta_data[req.room_name]:  
+                    del meta_data[req.room_name]
+                doc_ref_meta.set(meta_data) 
         
         if req.target_user in state.get("playersOrder", []):
             state["playersOrder"].remove(req.target_user)
         if req.target_user in state.get("scores", {}):
             del state["scores"][req.target_user]
             
-        # ✨ 回合制：從鎖定名單中剔除，並重新計算回合
+        # 回合制：從鎖定名單中剔除，並重新計算回合
         if req.target_user in state.get("trackedPlayers", []):
             state["trackedPlayers"].remove(req.target_user)
             if req.target_user in state.get("playerRounds", {}):
@@ -433,7 +444,15 @@ async def admin_action(req: AdminRequest):
         
     elif req.action_type == "clear_room":
         delete_messages_safe(req.room_name)
-        db.collection("system_meta").document("active_rooms").update({ f"{req.room_name}.{req.target_user}": DELETE_FIELD })
+        
+        # ✨ 安全清除大廳的房間
+        snap = doc_ref_meta.get()
+        if snap.exists:
+            meta_data = snap.to_dict()
+            if req.room_name in meta_data:
+                del meta_data[req.room_name]
+                doc_ref_meta.set(meta_data)
+        
         db.collection(STATE_COLLECTION).document(req.room_name).delete()
         
     return {"status": "success"}
