@@ -554,23 +554,28 @@
                         }
                     }
 
-                    // ✨ 2. 如果有大絕招動畫，加分跳窗就延遲 3.2 秒！
+                    // ✨ 2. 核心修復：在時間暫停前，先把「有變動的分數」算好並寫進小本本（陣列）裡
+                    let pendingToasts = [];
+                    for (let player in gameState.scores) {
+                        let oldScore = previousScores[player] || 50; 
+                        let newScore = gameState.scores[player];
+                        let diff = newScore - oldScore;
+                        
+                        if (diff > 0) {
+                            pendingToasts.push({ text: `🎉 ${player} +${diff} 分`, type: "success" });
+                        } else if (diff < 0) {
+                            pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
+                        }
+                    }
+
+                    // ✨ 3. 如果有大絕招動畫，加分跳窗就延遲 3.2 秒！
                     let toastDelay = willAnimate ? 3200 : 0; 
                     
+                    // 時間到了之後，把小本本裡的提示一個一個秀出來
                     setTimeout(() => {
-                        // ✨ 3. 核心修改：掃描「所有人」的分數變化
-                        for (let player in gameState.scores) {
-                            let oldScore = previousScores[player] || 50; // 預設 50 分開始
-                            let newScore = gameState.scores[player];
-                            let diff = newScore - oldScore;
-                            
-                            // 如果有分數變動，就彈出包含名字的提示！
-                            if (diff > 0) {
-                                showToast(`🎉 ${player} +${diff} 分`, "success");
-                            } else if (diff < 0) {
-                                showToast(`💥 ${player} ${diff} 分`, "danger");
-                            }
-                        }
+                        pendingToasts.forEach(toastMsg => {
+                            showToast(toastMsg.text, toastMsg.type);
+                        });
                     }, toastDelay);
 
                 } else {
@@ -580,6 +585,8 @@
                         window.lastAnimatedMsgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
                     }
                 }
+                
+                // 記錄完畢後才更新歷史分數
                 previousScores = { ...gameState.scores };
 
                 let scoreHTML = Object.entries(gameState.scores).sort((a,b)=>b[1]-a[1]).map(e => `<span>${e[0]}: ${e[1]}分</span>`).join(' | ');
