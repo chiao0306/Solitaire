@@ -566,19 +566,27 @@
                     let oldScore = previousScores[currentPlayer] || 50;
                     let newScore = gameState.scores[currentPlayer] || 50;
                     let diff = newScore - oldScore;
-                    if (diff > 0) showToast(`🎉 +${diff} 分`, "success");
-                    else if (diff < 0) showToast(`💥 ${diff} 分`, "danger");
-
-                    // ✨ 新增：判斷最後一句話是不是 4 個字，觸發全螢幕動畫！
+                    
+                    // ✨ 1. 先判斷最後一句話是不是 4 個字，會不會觸發全螢幕動畫？
+                    let willAnimate = false;
                     let latestMsg = chatHistory[chatHistory.length - 1];
                     if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
                         let msgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
-                        // 確保同一個成語不會重複播動畫
                         if (window.lastAnimatedMsgId !== msgId) {
+                            willAnimate = true;
                             triggerFlashyEffect(latestMsg.user_name, latestMsg.text);
                             window.lastAnimatedMsgId = msgId;
                         }
                     }
+
+                    // ✨ 2. 如果有大絕招動畫，加分跳窗就延遲 3.2 秒！沒有就立刻跳！
+                    let toastDelay = willAnimate ? 3200 : 0; 
+                    
+                    setTimeout(() => {
+                        if (diff > 0) showToast(`🎉 +${diff} 分`, "success");
+                        else if (diff < 0) showToast(`💥 ${diff} 分`, "danger");
+                    }, toastDelay);
+
                 } else {
                     // 第一次載入時，把最後一則訊息記下來，避免一進房間就播動畫
                     let latestMsg = chatHistory[chatHistory.length - 1];
