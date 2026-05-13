@@ -612,14 +612,25 @@
             apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
         });
 
+        // 💡 修改：購買提示前跳出確認與說明
         document.getElementById('hint-btn').addEventListener('click', async () => {
             if(!gameState.lastIdiom) return await showModalAlert("還沒有題目！");
-            let myHints = gameState.roundHints[currentPlayer] || 0; let actionType = myHints === 0 ? "hint_1" : "hint_2"; 
-            apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
+            
+            const msg = "確定要花費分數購買提示嗎？\n\n💡 功能說明：每次提示將扣除 5 分。\n第一階段：提供下一句建議成語的「第三個字」。\n第二階段：由 AI 進行成語意思解釋（不含標點與原字）。";
+            
+            if (await showModalAlert(msg, true)) {
+                let myHints = gameState.roundHints[currentPlayer] || 0;
+                let actionType = myHints === 0 ? "hint_1" : "hint_2"; 
+                apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: gameState.lastIdiom });
+            }
         });
 
-        document.getElementById('sos-btn').addEventListener('click', () => {
-            apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
+        // 💡 修改：發動求生前跳出確認與說明
+        document.getElementById('sos-btn').addEventListener('click', async () => {
+            const msg = "確定要發動「換聲調求生」嗎？\n\n💡 功能說明：發動後進入 3 連擊模式。第一擊可無視聲調接龍（例如：ㄒㄧˊ 可接 ㄒㄧ），順利完成 3 連擊後可獲得額外積分並成功逃脫！";
+            if (await showModalAlert(msg, true)) {
+                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
+            }
         });
 
         document.getElementById('big-random-btn').addEventListener('click', () => {
