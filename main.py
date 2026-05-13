@@ -89,7 +89,8 @@ def update_current_turn(state):
         idx = players.index(last_user)
         state["currentTurn"] = players[(idx + 1) % len(players)]
     else:
-        state["currentTurn"] = None
+        # ✨ 修復 1：沒人發言時，預設把棒子交給名單的第一個人！
+        state["currentTurn"] = players[0]  
 
 def get_room_state(room_name):
     doc = db.collection(STATE_COLLECTION).document(room_name).get()
@@ -287,6 +288,7 @@ async def random_topic(req: ActionRequest):
         state = get_room_state(req.room_name)
         state["lastIdiom"] = idiom
         state["pendingIdiom"] = idiom
+        state["lastChatUser"] = req.user_name  # ✨ 修復 2：系統記下是誰按的出題，這樣才能順利換下一個人回合
         state["rejected"] = False
         state["sosUser"] = None
         state["sosCount"] = 0
