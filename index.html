@@ -99,6 +99,26 @@
         
         #start-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(14, 17, 23, 0.85); border-radius: 10px; z-index: 10; backdrop-filter: blur(2px); }
 
+        /* 💡 全螢幕必殺技特效容器 */
+        #idiom-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85); z-index: 99999;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+        }
+        
+        /* 💡 單一文字的樣式與動畫 */
+        .idiom-char {
+            font-size: 110px; color: #FFD700; font-weight: bold;
+            text-shadow: 0 0 20px #ea580c, 0 0 40px #facc15;
+            opacity: 0; /* 一開始先隱藏 */
+        }
+        @keyframes charJump {
+            0% { opacity: 0; transform: scale(4); filter: blur(10px); }
+            15% { opacity: 1; transform: scale(1); filter: blur(0); }
+            100% { opacity: 1; transform: scale(1); filter: blur(0); }
+        }
+        .animate-char { animation: charJump 2.5s ease-out forwards; }
+
     </style>
 </head>
 <body>
@@ -134,6 +154,7 @@
         </div>
 
         <div id="game-screen">
+        <div id="idiom-overlay"></div>
             <div class="panel" style="padding: 15px; margin-bottom: 15px;">
                 <div id="turn-info" style="font-weight: bold; color: #4CAF50; margin-bottom: 8px;">🟢 連線中...</div>
                 <div id="scoreboard" style="font-size: 13px; color: #ccc;">🏆 排行榜：載入中...</div>
@@ -547,6 +568,23 @@
                     let diff = newScore - oldScore;
                     if (diff > 0) showToast(`🎉 +${diff} 分`, "success");
                     else if (diff < 0) showToast(`💥 ${diff} 分`, "danger");
+
+                    // ✨ 新增：判斷最後一句話是不是 4 個字，觸發全螢幕動畫！
+                    let latestMsg = chatHistory[chatHistory.length - 1];
+                    if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
+                        let msgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
+                        // 確保同一個成語不會重複播動畫
+                        if (window.lastAnimatedMsgId !== msgId) {
+                            triggerFlashyEffect(latestMsg.user_name, latestMsg.text);
+                            window.lastAnimatedMsgId = msgId;
+                        }
+                    }
+                } else {
+                    // 第一次載入時，把最後一則訊息記下來，避免一進房間就播動畫
+                    let latestMsg = chatHistory[chatHistory.length - 1];
+                    if (latestMsg && latestMsg.type === "chat") {
+                        window.lastAnimatedMsgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
+                    }
                 }
                 previousScores = { ...gameState.scores };
 
@@ -636,6 +674,42 @@
                 if(success) { alert("房間已徹底毀滅！"); window.location.reload(); }
             }
         });
+        
+        // 💡 全螢幕必殺技動畫主程式
+        function triggerFlashyEffect(userName, text) {
+            const overlay = document.getElementById('idiom-overlay');
+            overlay.style.display = 'flex';
+            // 寫入上方人名，與下方裝成語的橫向容器
+            overlay.innerHTML = `
+                <div style="color:#fff; font-size:28px; position:absolute; top:25%; font-weight:bold; letter-spacing: 3px;">
+                    👤 ${userName} 使出...
+                </div>
+                <div id="idiom-flex" style="display:flex; gap: 15px;"></div>
+            `;
+            
+            // 一個字一個字產生，每個間隔 0.5 秒
+            [...text].forEach((char, i) => {
+                setTimeout(() => {
+                    const charDiv = document.createElement('div');
+                    charDiv.className = 'idiom-char animate-char';
+                    charDiv.textContent = char;
+                    document.getElementById('idiom-flex').appendChild(charDiv);
+                }, i * 500); 
+            });
+
+            // ✨ 全場強制暫停：把輸入框跟按鈕暫時鎖死
+            const input = document.getElementById('msg-input');
+            const btn = document.getElementById('send-btn');
+            const oldInputState = input.disabled;
+            input.disabled = true; btn.disabled = true;
+
+            // 3 秒後自動關閉動畫，並把操作權還給玩家
+            setTimeout(() => { 
+                overlay.style.display = 'none'; 
+                input.disabled = oldInputState; 
+                btn.disabled = oldInputState;
+            }, 3000);
+        }
     </script>
 </body>
 </html>
