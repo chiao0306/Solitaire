@@ -108,10 +108,15 @@
         
         /* 💡 單一文字的樣式與動畫 */
         .idiom-char {
-            font-size: 110px; color: #FFD700; font-weight: bold;
+            font-size: 110px; color: #FFD700; 
+            /* ✨ 破解 iOS Bug 1：絕對不能用 bold，改回 normal */
+            font-weight: normal; 
+            /* ✨ 破解 iOS Bug 2：用描邊的方式把字體強行「畫粗」，保持霸氣感 */
+            -webkit-text-stroke: 3px #FFD700; 
+            
             text-shadow: 0 0 20px #ea580c, 0 0 40px #facc15;
-            opacity: 0; /* 一開始先隱藏 */
-            /* ✨ 終極跨平台標楷體設定：涵蓋 iOS、Mac、Windows 與 Android */
+            opacity: 0; 
+            /* 終極跨平台楷體設定 */
             font-family: 'Kaiti TC', 'STKaiti', 'BiaoKai', 'DFKai-sb', 'KaiTi', '楷體', '標楷體', serif; 
         }
 
