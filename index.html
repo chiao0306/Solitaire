@@ -40,6 +40,20 @@
         .msg.self { background: #056162; color: white; border-bottom-right-radius: 2px; }
         .msg.other { background: #31333f; color: white; border-bottom-left-radius: 2px; }
         
+        /* 💡 修改：人名放大 1.3 倍 (原本 11px -> 約 14.5px) */
+        .msg-info { font-size: 14.5px; margin-bottom: 4px; color: #aaa; font-weight: 500; }
+
+        /* 💡 新增：系統隨機出題的藍色塊樣式 */
+        .msg.topic-prompt { 
+            background: #1e40af !important; /* 深藍色 */
+            color: #fff !important; 
+            font-weight: bold; 
+            align-self: center; 
+            border: none; 
+            font-size: 15px; 
+            box-shadow: 0 0 10px rgba(30, 64, 175, 0.5);
+        }
+        
         /* 💡 放大玩家發文的訊息框 (大約 1.5 倍) */
         .msg.self, .msg.other { 
             font-size: 22px; 
@@ -493,6 +507,11 @@
                     // ✨ 修復 1：顯示加入房間與發動求生的玩家名稱與頭像
                     if (mType === "join_room" || mType === "sos_start") {
                         displayText = `${msg.avatar || '😎'} ${msg.user_name} ${msg.text}`;
+                    }
+                    
+                    // ✨ 新增：如果是系統隨機出題，套用藍色色塊樣式
+                    if (mType === "system" && msg.text.includes("題目為")) {
+                        msgClass += " topic-prompt";
                     }
                     
                     // ✨ 修復 3：判斷 3 連擊成功，套用專屬綠色色塊
