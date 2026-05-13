@@ -390,9 +390,17 @@
 
             startOverlay.style.display = (!hasStarted && !gameState.isGameOver) ? "flex" : "none";
 
-            if (!hasStarted) isMyTurn = true;
-            else if (gameState.playersOrder.length === 1) isMyTurn = (playerIndex === -1); 
-            else isMyTurn = (gameState.currentTurn === currentPlayer);
+            // 💡 規則更新：判斷現在能不能發言
+            if (!hasStarted) {
+                isMyTurn = true; // 沒人開局：誰都可以出題
+            } else if (gameState.playersOrder.length === 1) {
+                // ✨ 核心修改：如果房間只有 1 個人發過言，解除鎖定！
+                // 允許他自己無限接龍，也允許路人隨時打字加入戰局。
+                isMyTurn = true; 
+            } else {
+                // 一旦有 2 個人以上發言過，就恢復嚴格的排隊輪流機制！
+                isMyTurn = (gameState.currentTurn === currentPlayer);
+            }
 
             let hasChat = chatHistory.some(m => m.type === 'chat');
             refBtn.disabled = (gameState.alreadyJudged || !hasChat || gameState.isGameOver);
