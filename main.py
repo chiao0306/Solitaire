@@ -321,6 +321,10 @@ async def restart_game(req: ActionRequest):
     new_state["playersOrder"] = players
     for p in players:
         new_state["scores"][p] = 50
+    
+    # 確保重開後沒有人是投降狀態
+    new_state["surrenderUser"] = None
+    
     update_current_turn(new_state)
     save_room_state(req.room_name, new_state)
 
@@ -343,7 +347,7 @@ async def restart_game(req: ActionRequest):
         batch.commit()
         
     return {"status": "success"}
-
+    
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
     if req.admin_pwd != ADMIN_PASSWORD:
