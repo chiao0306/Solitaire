@@ -169,14 +169,17 @@
             setTimeout(() => toast.remove(), 2000); // 2秒後消失
         }
 
+        // 💡 修改：純粹渲染傳入的名單，不預載手機紀錄
         function renderPlayerChips(roomPlayers = []) {
-            let savedPlayers = JSON.parse(localStorage.getItem('savedPlayers') || '[]');
-            let combined = [...new Set([...roomPlayers, ...savedPlayers])];
             const container = document.getElementById('player-chips');
-            container.innerHTML = '';
-            combined.forEach(p => {
+            container.innerHTML = ''; // 清空
+            
+            if (roomPlayers.length === 0) return; // 沒人就不畫
+
+            roomPlayers.forEach(p => {
                 let chip = document.createElement('div');
-                chip.className = 'chip'; chip.textContent = p;
+                chip.className = 'chip';
+                chip.textContent = p;
                 chip.onclick = () => {
                     document.getElementById('player-input').value = p;
                     container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
@@ -191,10 +194,13 @@
             container.innerHTML = '';
             rooms.forEach(r => {
                 let chip = document.createElement('div');
-                chip.className = 'chip'; chip.textContent = r;
+                chip.className = 'chip';
+                chip.textContent = r;
                 chip.onclick = () => {
                     document.getElementById('room-input').value = r;
+                    // 💡 重點：點了房間按鈕，才去抓該房間的玩家名單出來顯示
                     renderPlayerChips(globalRoomData[r] || []);
+                    
                     container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
                     chip.classList.add('active');
                 };
@@ -203,14 +209,19 @@
         }
 
         function listenToGlobalRooms() {
-            renderPlayerChips(); 
+            // renderPlayerChips(); 💡 這一行刪掉，初始不顯示任何名字標籤
+            
             const docRef = doc(db, "system_meta", "active_rooms");
             onSnapshot(docRef, (docSnap) => {
                 if (docSnap.exists()) {
                     globalRoomData = docSnap.data(); 
                     renderRoomChips(Object.keys(globalRoomData));
+                    
+                    // 只有當輸入框已經有對應房間時，才即時更新名字標籤
                     const currentInput = document.getElementById('room-input').value;
-                    if (currentInput && globalRoomData[currentInput]) renderPlayerChips(globalRoomData[currentInput]);
+                    if (currentInput && globalRoomData[currentInput]) {
+                        renderPlayerChips(globalRoomData[currentInput]);
+                    }
                 }
             });
         }
@@ -218,7 +229,12 @@
 
         document.getElementById('room-input').addEventListener('input', (e) => {
             const selectedRoom = e.target.value;
-            renderPlayerChips(globalRoomData[selectedRoom] || []);
+            // 💡 如果輸入的房間存在，就顯示玩家；否則就清空名字標籤
+            if (globalRoomData[selectedRoom]) {
+                renderPlayerChips(globalRoomData[selectedRoom]);
+            } else {
+                renderPlayerChips([]); // 清空名字標籤
+            }
             document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
         });
 
