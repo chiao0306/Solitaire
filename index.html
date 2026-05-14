@@ -101,12 +101,10 @@
             flex-direction: column; /* 讓頭、身體、尾巴垂直排列 */
             box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         }
-        
         #rules-dialog::backdrop {
             background: rgba(0,0,0,0.85);
             backdrop-filter: blur(3px);
         }
-        
         .rules-header {
             background: linear-gradient(135deg, #3b82f6, #1d4ed8);
             padding: 18px;
@@ -115,27 +113,11 @@
             font-weight: bold;
             flex-shrink: 0; /* 標題絕不縮水 */
         }
-        
         .rules-content {
             padding: 20px;
             overflow-y: auto; /* 只有內容區域可以上下滑動 */
             flex-grow: 1; /* 填滿剩下的空間 */
             line-height: 1.6;
-        }
-        
-        .rules-section {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-left: 4px solid #3b82f6;
-        }
-        .rules-section h3 {
-            margin-top: 0;
-            color: #60a5fa;
-            display: flex;
-            align-items: center;
-            gap: 8px;
         }
         .rules-footer {
             padding: 15px;
@@ -145,7 +127,6 @@
             flex-shrink: 0; /* 按鈕區絕不縮水 */
         }
         .rules-content b { color: #facc15; }
-        
     </style>
 </head>
 <body>
