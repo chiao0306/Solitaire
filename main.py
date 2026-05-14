@@ -123,152 +123,190 @@ def delete_messages_safe(room_name, target_user=None):
 
 @app.post("/send_chat")
 async def send_chat(req: ChatRequest):
-    state = get_room_state(req.room_name)
-    
-    # ✨ 新增核心防護：檢查是不是輪到這個人 (防駭客硬戳 API)
-    current_turn = state.get("currentTurn")
-    has_started = bool(state.get("lastIdiom") or state.get("pendingIdiom"))
-    players = state.get("playersOrder", [])
-    
-    # 規則：如果遊戲已經開始、房間裡不只一人，且當前輪到的不是該玩家，就直接阻擋！
-    if has_started and len(players) > 1 and current_turn and current_turn != req.user_name:
-        raise HTTPException(status_code=403, detail="現在不是你的回合喔！請不要作弊 😠")
-    
-    if len(req.text) > 15:
-        raise HTTPException(status_code=400, detail="成語或輸入文字太長囉！")
-    
-    targetForBonus = state.get("lastIdiom") if state.get("rejected") else state.get("pendingIdiom")
-    valid_target = targetForBonus if targetForBonus else req.last_idiom
-    
-    if not check_idiom_connection(valid_target, req.text, req.ignore_tone):
-        raise HTTPException(status_code=400, detail="拼音或聲調不符！請重新輸入。")
+    # ✨ 1. 準備 Transaction 與所需的 Document References
+    transaction_obj = db.transaction()
+    room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
+    chat_ref = db.collection(CHAT_COLLECTION).document() # 預先生成一筆對話的 ID
+
+    # ✨ 2. 定義 Transaction 內容
+    @firestore.transactional
+    def process_chat_transaction(transaction, room_doc_ref, chat_doc_ref):
+        doc = room_doc_ref.get(transaction=transaction)
+        state = doc.to_dict() if doc.exists else get_default_state()
         
-    isPerfectMatch = False
-    if targetForBonus and req.text and targetForBonus[-1] == req.text[0]:
-        isPerfectMatch = True
+        # --- 之前的驗證邏輯 ---
+        current_turn = state.get("currentTurn")
+        has_started = bool(state.get("lastIdiom") or state.get("pendingIdiom"))
+        players = state.get("playersOrder", [])
+        
+        if has_started and len(players) > 1 and current_turn and current_turn != req.user_name:
+            raise HTTPException(status_code=403, detail="現在不是你的回合喔！請不要作弊 😠")
+        
+        if len(req.text) > 15:
+            raise HTTPException(status_code=400, detail="成語或輸入文字太長囉！")
+        
+        targetForBonus = state.get("lastIdiom") if state.get("rejected") else state.get("pendingIdiom")
+        valid_target = targetForBonus if targetForBonus else req.last_idiom
+        
+        if not check_idiom_connection(valid_target, req.text, req.ignore_tone):
+            raise HTTPException(status_code=400, detail="拼音或聲調不符！請重新輸入。")
+            
+        isPerfectMatch = False
+        if targetForBonus and req.text and targetForBonus[-1] == req.text[0]:
+            isPerfectMatch = True
 
-    # ✨ 回合制：如果是第一句成語，立刻鎖定名單
-    is_first_move = not state.get("lastIdiom") and not state.get("pendingIdiom")
-    if is_first_move and not state.get("trackedPlayers"):
-        state["trackedPlayers"] = state.get("playersOrder", []).copy()
+        # --- 狀態更新邏輯 ---
+        is_first_move = not state.get("lastIdiom") and not state.get("pendingIdiom")
+        if is_first_move and not state.get("trackedPlayers"):
+            state["trackedPlayers"] = state.get("playersOrder", []).copy()
 
-    if not state.get("rejected"):
-        state["lastIdiom"] = state.get("pendingIdiom")
-    state["pendingIdiom"] = req.text
-    state["rejected"] = False
+        if not state.get("rejected"):
+            state["lastIdiom"] = state.get("pendingIdiom")
+        state["pendingIdiom"] = req.text
+        state["rejected"] = False
 
-    state["lastChatPrevSosUser"] = state.get("sosUser")
-    state["lastChatPrevSosCount"] = state.get("sosCount")
-    state["lastChatUser"] = req.user_name
-    state["lastChatWasPerfectMatch"] = isPerfectMatch
-    state["alreadyJudged"] = False
-    state["roundHints"] = {}
+        state["lastChatPrevSosUser"] = state.get("sosUser")
+        state["lastChatPrevSosCount"] = state.get("sosCount")
+        state["lastChatUser"] = req.user_name
+        state["lastChatWasPerfectMatch"] = isPerfectMatch
+        state["alreadyJudged"] = False
+        state["roundHints"] = {}
 
-    user = req.user_name
-    user_finished_turn = False # 紀錄是否完成一個有效回合動作
+        user = req.user_name
+        user_finished_turn = False
 
-    if state.get("sosUser") == user:
-        state["sosCount"] = state.get("sosCount", 0) + 1
-        if state["sosCount"] >= 3:
+        if state.get("sosUser") == user:
+            state["sosCount"] = state.get("sosCount", 0) + 1
+            if state["sosCount"] >= 3:
+                state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
+                state["sosUser"] = None
+                state["sosCount"] = 0
+                user_finished_turn = True
+        else:
             state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
             state["sosUser"] = None
             state["sosCount"] = 0
-            user_finished_turn = True # 逃生最後一擊才算完成回合
-    else:
-        state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
-        state["sosUser"] = None
-        state["sosCount"] = 0
-        user_finished_turn = True # 正常發言算完成回合
+            user_finished_turn = True
 
-    # ✨ 整合：回合推進與對話框倒數提醒
-    if user_finished_turn and user in state.get("trackedPlayers", []):
-        state["playerRounds"] = state.get("playerRounds", {})
-        state["playerRounds"][user] = state["playerRounds"].get(user, 0) + 1
-        
-        tracked = state["trackedPlayers"]
-        if tracked:
-            old_round = state.get("currentRound", 0)
-            min_round = min([state["playerRounds"].get(p, 0) for p in tracked])
-            state["currentRound"] = min_round
+        # 回合推進與對話框倒數提醒
+        system_msg = None
+        if user_finished_turn and user in state.get("trackedPlayers", []):
+            state["playerRounds"] = state.get("playerRounds", {})
+            state["playerRounds"][user] = state["playerRounds"].get(user, 0) + 1
             
-            if state.get("maxRounds", 0) > 0:
-                # ✨ 修改：達到最大回合時，不直接 GameOver，而是進入驗證模式
-                if state["currentRound"] >= state["maxRounds"]:
-                    state["isVerifyingLastMove"] = True
-                    state["verificationVotes"] = [] # 重置投票箱
-                elif min_round > old_round:
-                    remaining = state["maxRounds"] - min_round
-                    if 0 < remaining <= 3:
-                        db.collection(CHAT_COLLECTION).add({
-                            "room_name": req.room_name, "user_name": "System", 
-                            "text": f"【系統】🚨 比賽進入最後倒數，剩下 **{remaining}** 回合！", 
-                            "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
-                        })
+            tracked = state["trackedPlayers"]
+            if tracked:
+                old_round = state.get("currentRound", 0)
+                min_round = min([state["playerRounds"].get(p, 0) for p in tracked])
+                state["currentRound"] = min_round
+                
+                if state.get("maxRounds", 0) > 0:
+                    if state["currentRound"] >= state["maxRounds"]:
+                        state["isVerifyingLastMove"] = True
+                        state["verificationVotes"] = []
+                    elif min_round > old_round:
+                        remaining = state["maxRounds"] - min_round
+                        if 0 < remaining <= 3:
+                            # 準備發送系統訊息
+                            system_msg = f"【系統】🚨 比賽進入最後倒數，剩下 **{remaining}** 回合！"
 
-    update_current_turn(state)
-    save_room_state(req.room_name, state)
+        update_current_turn(state)
+        state["updated_at"] = firestore.SERVER_TIMESTAMP
 
-    db.collection(CHAT_COLLECTION).add({
-        "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
-        "type": "chat", "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
-    })
+        # ✨ 3. 將資料寫入 (狀態、對話紀錄、系統訊息全部一起寫入)
+        transaction.set(room_doc_ref, state)
+        transaction.set(chat_doc_ref, {
+            "room_name": req.room_name, "user_name": req.user_name, "text": req.text, 
+            "type": "chat", "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        
+        # 如果剛好跨回合且快結束了，一起寫入系統提示訊息
+        if system_msg:
+            sys_msg_ref = db.collection(CHAT_COLLECTION).document()
+            transaction.set(sys_msg_ref, {
+                "room_name": req.room_name, "user_name": "System", 
+                "text": system_msg, "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
+            })
+
+    # ✨ 4. 觸發執行
+    process_chat_transaction(transaction_obj, room_ref, chat_ref)
+    
     return {"status": "success"}
 
 @app.post("/system_action")
 async def system_action(req: ActionRequest):
-    state = get_room_state(req.room_name)
-    changed = False
+    # ✨ 1. 準備 Transaction 與 Document References
+    transaction_obj = db.transaction()
+    room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
+    chat_ref = db.collection(CHAT_COLLECTION).document()  # 預先生成聊天對話的 ID
+    meta_ref = db.collection("system_meta").document("active_rooms")  # 大廳房間名單
 
-    if req.action_type == "join_room":
-        # 剛開房時設定最大回合數
-        if not state.get("playersOrder"): 
-            state["maxRounds"] = req.max_rounds
+    # ✨ 2. 定義 Transaction 內容
+    @firestore.transactional
+    def process_system_transaction(transaction, room_doc_ref, chat_doc_ref, meta_doc_ref):
+        doc = room_doc_ref.get(transaction=transaction)
+        state = doc.to_dict() if doc.exists else get_default_state()
+        changed = False
 
-        if req.user_name not in state.get("playersOrder", []):
-            state["playersOrder"].append(req.user_name)
-            state["scores"][req.user_name] = 50
-            changed = True
-        
-        db.collection("system_meta").document("active_rooms").set({
-            req.room_name: { req.user_name: req.avatar }
-        }, merge=True)
+        if req.action_type == "join_room":
+            # 剛開房時設定最大回合數
+            if not state.get("playersOrder"): 
+                state["maxRounds"] = req.max_rounds
 
-    elif req.action_type == "sos_start":
-        state["sosUser"] = req.user_name
-        state["sosCount"] = 0
-        changed = True
-    elif req.action_type == "game_over":
-        state["isGameOver"] = True
-        state["surrenderUser"] = req.user_name
-        changed = True
-        
-    # ✨ 新增區塊：處理最終回合的「不用裁判」投票
-    elif req.action_type == "final_vote_no":
-        if state.get("isVerifyingLastMove"):
-            votes = state.get("verificationVotes", [])
-            if req.user_name not in votes:
-                votes.append(req.user_name)
-                state["verificationVotes"] = votes
+            if req.user_name not in state.get("playersOrder", []):
+                state["playersOrder"].append(req.user_name)
+                state["scores"][req.user_name] = 50
+                changed = True
             
-            # 檢查是否所有房間內的人都投了「不用」
-            active_players = state.get("playersOrder", [])
-            if len(votes) >= len(active_players):
-                state["isVerifyingLastMove"] = False
-                state["isGameOver"] = True # 全票通過，正式結算！
-        changed = True
+            # 將大廳的人員名單更新也包在交易裡執行
+            transaction.set(meta_doc_ref, {
+                req.room_name: { req.user_name: req.avatar }
+            }, merge=True)
 
-    if changed:
-        update_current_turn(state)
-        save_room_state(req.room_name, state)
+        elif req.action_type == "sos_start":
+            state["sosUser"] = req.user_name
+            state["sosCount"] = 0
+            changed = True
+            
+        elif req.action_type == "game_over":
+            state["isGameOver"] = True
+            state["surrenderUser"] = req.user_name
+            changed = True
+            
+        elif req.action_type == "final_vote_no":
+            if state.get("isVerifyingLastMove"):
+                votes = state.get("verificationVotes", [])
+                if req.user_name not in votes:
+                    votes.append(req.user_name)
+                    state["verificationVotes"] = votes
+                
+                # 檢查是否所有房間內的人都投了「不用」
+                active_players = state.get("playersOrder", [])
+                if len(votes) >= len(active_players):
+                    state["isVerifyingLastMove"] = False
+                    state["isGameOver"] = True # 全票通過，正式結算！
+            changed = True
 
-    display_text = req.text
-    if req.action_type == "game_over":
-        display_text = f"【系統】{req.user_name} 投降了 🏳️"
+        # 更新狀態並準備寫入
+        if changed:
+            update_current_turn(state)
+            state["updated_at"] = firestore.SERVER_TIMESTAMP
+            transaction.set(room_doc_ref, state)
 
-    db.collection(CHAT_COLLECTION).add({
-        "room_name": req.room_name, "user_name": req.user_name, "text": display_text, 
-        "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
-    })
+        # 處理要顯示的對話框文字
+        display_text = req.text
+        if req.action_type == "game_over":
+            display_text = f"【系統】{req.user_name} 投降了 🏳️"
+
+        # 將系統對話紀錄一併寫入
+        transaction.set(chat_doc_ref, {
+            "room_name": req.room_name, "user_name": req.user_name, "text": display_text, 
+            "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
+        })
+
+    # ✨ 3. 觸發執行
+    process_system_transaction(transaction_obj, room_ref, chat_ref, meta_ref)
+    
     return {"status": "success"}
 
 @app.post("/call_referee")
@@ -453,78 +491,95 @@ async def restart_game(req: ActionRequest):
     
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
-    # ✨ 修正 1：現在可以正確讀取到 req.user_name 來判斷是不是自己了
     is_self_delete = (req.action_type == "delete_user" and req.target_user == req.user_name)
     if req.admin_pwd != ADMIN_PASSWORD and not is_self_delete:
         raise HTTPException(status_code=403, detail="權限不足！")
     
-    state = get_room_state(req.room_name)
-    doc_ref_meta = db.collection("system_meta").document("active_rooms")
+    # ✨ 1. 準備 Transaction 與 Document References
+    transaction_obj = db.transaction()
+    room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
+    meta_ref = db.collection("system_meta").document("active_rooms")
+    sys_msg_ref = db.collection(CHAT_COLLECTION).document() # 預先生成系統訊息 ID
     
     if req.action_type == "delete_user" and req.target_user:
         target = req.target_user
-        # 🚨 修正 2：已經把 delete_messages_safe(req.room_name, target) 這一行拿掉了！
-        # 這樣玩家的發言就會留在資料庫裡，並在畫面上顯示 (已離開)
-        
-        # 發送離開系統訊息
-        db.collection(CHAT_COLLECTION).add({
-            "room_name": req.room_name, "user_name": "System", 
-            "text": f"({target}) 離開了遊戲", 
-            "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
-        })
 
-        # ✨ 同步大廳名單 (最安全寫法)
-        snap = doc_ref_meta.get()
-        if snap.exists:
-            meta_data = snap.to_dict()
+        # ✨ 2. 定義刪除玩家的 Transaction
+        @firestore.transactional
+        def process_delete_user_transaction(transaction, room_doc_ref, meta_doc_ref, sys_doc_ref):
+            doc = room_doc_ref.get(transaction=transaction)
+            state = doc.to_dict() if doc.exists else get_default_state()
+            
+            meta_doc = meta_doc_ref.get(transaction=transaction)
+            meta_data = meta_doc.to_dict() if meta_doc.exists else {}
+
+            # 同步大廳名單
             if req.room_name in meta_data and target in meta_data[req.room_name]:
                 del meta_data[req.room_name][target]
-                if not meta_data[req.room_name]: del meta_data[req.room_name]
-                doc_ref_meta.set(meta_data)
-        
-        if target in state.get("playersOrder", []):
-            state["playersOrder"].remove(target)
-        if target in state.get("scores", {}):
-            del state["scores"][target]
-            
-        # 處理逃生者中途離開
-        if state.get("sosUser") == target:
-            state["sosUser"] = None
-            state["sosCount"] = 0
+                if not meta_data[req.room_name]: 
+                    del meta_data[req.room_name]
+                transaction.set(meta_doc_ref, meta_data)
 
-        # 回合制計算更新
-        if target in state.get("trackedPlayers", []):
-            state["trackedPlayers"].remove(target)
-            if target in state.get("playerRounds", {}):
-                del state["playerRounds"][target]
-            tracked = state["trackedPlayers"]
-            if tracked:
-                state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
-                if state.get("maxRounds", 0) > 0 and state["currentRound"] >= state["maxRounds"]:
-                    state["isGameOver"] = True
-        
-        # ✨ 新增：判斷這是不是房間裡的最後一個人？
-        if not state.get("playersOrder"):
-            # 如果玩家名單空了，就等同於執行「徹底毀滅清空房間」！
-            delete_messages_safe(req.room_name) # 清空所有對話
-            db.collection(STATE_COLLECTION).document(req.room_name).delete() # 清除房間狀態
-            return {"status": "success"} # 直接結束，不要再存檔了
+            # 修改遊戲狀態
+            if target in state.get("playersOrder", []):
+                state["playersOrder"].remove(target)
+            if target in state.get("scores", {}):
+                del state["scores"][target]
                 
-        update_current_turn(state)
-        save_room_state(req.room_name, state)
+            if state.get("sosUser") == target:
+                state["sosUser"] = None
+                state["sosCount"] = 0
+
+            # 回合制計算更新
+            if target in state.get("trackedPlayers", []):
+                state["trackedPlayers"].remove(target)
+                if target in state.get("playerRounds", {}):
+                    del state["playerRounds"][target]
+                tracked = state["trackedPlayers"]
+                if tracked:
+                    state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
+                    if state.get("maxRounds", 0) > 0 and state["currentRound"] >= state["maxRounds"]:
+                        state["isGameOver"] = True
+
+            # 判斷這是不是房間裡的最後一個人？
+            is_empty_room = len(state.get("playersOrder", [])) == 0
+
+            if not is_empty_room:
+                update_current_turn(state)
+                state["updated_at"] = firestore.SERVER_TIMESTAMP
+                transaction.set(room_doc_ref, state)
+                transaction.set(sys_doc_ref, {
+                    "room_name": req.room_name, "user_name": "System", 
+                    "text": f"({target}) 離開了遊戲", 
+                    "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
+                })
+                
+            return is_empty_room # 將結果傳到交易外部
+
+        # ✨ 3. 執行交易
+        is_empty = process_delete_user_transaction(transaction_obj, room_ref, meta_ref, sys_msg_ref)
         
+        # ✨ 4. 交易結束後，如果判斷房間已空，在交易外執行大量刪除動作
+        if is_empty:
+            delete_messages_safe(req.room_name)
+            room_ref.delete()
+            
     elif req.action_type == "clear_room":
+        # 毀滅式清空房間 (不需要防搶拍，直接執行即可)
         delete_messages_safe(req.room_name)
         
-        # ✨ 安全清除大廳的房間
-        snap = doc_ref_meta.get()
-        if snap.exists:
-            meta_data = snap.to_dict()
-            if req.room_name in meta_data:
-                del meta_data[req.room_name]
-                doc_ref_meta.set(meta_data)
-        
-        db.collection(STATE_COLLECTION).document(req.room_name).delete()
+        # 確保大廳名單安全刪除
+        @firestore.transactional
+        def process_clear_meta(transaction, meta_doc_ref):
+            meta_doc = meta_doc_ref.get(transaction=transaction)
+            if meta_doc.exists:
+                meta_data = meta_doc.to_dict()
+                if req.room_name in meta_data:
+                    del meta_data[req.room_name]
+                    transaction.set(meta_doc_ref, meta_data)
+                    
+        process_clear_meta(transaction_obj, meta_ref)
+        room_ref.delete()
         
     return {"status": "success"}
     
@@ -535,21 +590,7 @@ async def get_rooms():
 
 @app.post("/revoke_chat")
 async def revoke_chat(req: ActionRequest):
-    state = get_room_state(req.room_name)
-
-    if state.get("lastChatUser") != req.user_name:
-        raise HTTPException(status_code=400, detail="只能收回自己最新的發言！")
-    
-    if state.get("alreadyJudged"):
-        raise HTTPException(status_code=400, detail="裁判已經判決，無法收回！")
-
-    is_perfect_match = state.get("lastChatWasPerfectMatch", False)
-    penalty = 25 if is_perfect_match else 15
-
-    state["scores"][req.user_name] = state["scores"].get(req.user_name, 50) - penalty
-    if state["scores"][req.user_name] <= 0:
-        state["isGameOver"] = True
-
+    # ✨ 1. (在交易外) 先找出玩家最新的一筆發言紀錄，取得準備要刪除的 Document Reference
     docs = list(db.collection(CHAT_COLLECTION)\
         .where("room_name", "==", req.room_name)\
         .where("user_name", "==", req.user_name)\
@@ -557,30 +598,67 @@ async def revoke_chat(req: ActionRequest):
         .stream())
         
     valid_docs = [d for d in docs if d.to_dict().get("timestamp") is not None]
+    doc_to_delete_ref = None
     if valid_docs:
         valid_docs.sort(key=lambda d: d.to_dict().get("timestamp"), reverse=True)
-        db.collection(CHAT_COLLECTION).document(valid_docs[0].id).delete()
+        doc_to_delete_ref = db.collection(CHAT_COLLECTION).document(valid_docs[0].id)
 
-    # ✨ 回合制：收回發言，個人計數器 -1
-    user = req.user_name
-    if user in state.get("trackedPlayers", []):
-        state["playerRounds"] = state.get("playerRounds", {})
-        state["playerRounds"][user] = max(0, state["playerRounds"].get(user, 0) - 1)
-        tracked = state["trackedPlayers"]
-        if tracked:
-            state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
+    # ✨ 2. 準備 Transaction 與其他的 Document References
+    transaction_obj = db.transaction()
+    room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
+    sys_msg_ref = db.collection(CHAT_COLLECTION).document() # 預先生成系統訊息 ID
 
-    state["rejected"] = True
-    state["sosUser"] = state.get("lastChatPrevSosUser")
-    state["sosCount"] = state.get("lastChatPrevSosCount")
+    # ✨ 3. 定義 Transaction 內容
+    @firestore.transactional
+    def process_revoke_transaction(transaction, room_doc_ref, sys_doc_ref, del_doc_ref):
+        doc = room_doc_ref.get(transaction=transaction)
+        state = doc.to_dict() if doc.exists else get_default_state()
 
-    update_current_turn(state)
-    save_room_state(req.room_name, state)
+        # 防護 1：確認現在最新發言的還是不是這個人（防剛好有人接下去的極限時間差）
+        if state.get("lastChatUser") != req.user_name:
+            raise HTTPException(status_code=400, detail="只能收回自己最新的發言！或者已經有人接下去了！")
+        
+        # 防護 2：確認裁判還沒判決
+        if state.get("alreadyJudged"):
+            raise HTTPException(status_code=400, detail="裁判已經判決，無法收回！")
 
-    db.collection(CHAT_COLLECTION).add({
-        "room_name": req.room_name, "user_name": "System", 
-        "text": f"【系統】**{req.user_name}** 覺得不妥，收回了發言！扣除 {penalty} 分 (原地 -5 分)", 
-        "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
-    })
+        is_perfect_match = state.get("lastChatWasPerfectMatch", False)
+        penalty = 25 if is_perfect_match else 15
+
+        # 扣分處理
+        state["scores"][req.user_name] = state["scores"].get(req.user_name, 50) - penalty
+        if state["scores"][req.user_name] <= 0:
+            state["isGameOver"] = True
+
+        # 回合制：收回發言，個人計數器 -1
+        user = req.user_name
+        if user in state.get("trackedPlayers", []):
+            state["playerRounds"] = state.get("playerRounds", {})
+            state["playerRounds"][user] = max(0, state["playerRounds"].get(user, 0) - 1)
+            tracked = state["trackedPlayers"]
+            if tracked:
+                state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
+
+        state["rejected"] = True
+        state["sosUser"] = state.get("lastChatPrevSosUser")
+        state["sosCount"] = state.get("lastChatPrevSosCount")
+
+        update_current_turn(state)
+        state["updated_at"] = firestore.SERVER_TIMESTAMP
+
+        # ✨ 4. 將狀態寫入、加入系統提示、並刪除那筆發言
+        transaction.set(room_doc_ref, state)
+        transaction.set(sys_doc_ref, {
+            "room_name": req.room_name, "user_name": "System", 
+            "text": f"【系統】**{req.user_name}** 覺得不妥，收回了發言！扣除 {penalty} 分 (原地 -5 分)", 
+            "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        
+        # 如果有找到那筆要刪除的紀錄，就在交易裡把它刪掉
+        if del_doc_ref:
+            transaction.delete(del_doc_ref)
+
+    # ✨ 5. 觸發執行
+    process_revoke_transaction(transaction_obj, room_ref, sys_msg_ref, doc_to_delete_ref)
 
     return {"status": "success"}
