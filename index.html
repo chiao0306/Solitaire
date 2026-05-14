@@ -187,6 +187,7 @@
 
         <button class="btn-dark" id="btn-restart" style="margin-bottom: 10px;">🔄 重新開始 (套用上方設定)</button>
         <button class="btn-dark" onclick="window.location.reload()" style="margin-bottom: 10px;">🚪 返回大廳</button>
+        <button class="btn-danger" id="btn-leave-room" style="margin-bottom: 10px; margin-top: 5px;">🏃 刪除角色並退出房間</button>
         <button class="btn-dark" onclick="window.open('https://github.com/chiao0306/chiao0306.github.io/blob/main/README.md', '_blank')" style="margin-bottom: 10px;">📖 遊戲規則</button>
         
         <hr>
@@ -308,13 +309,11 @@
             const turnStatus = document.getElementById('lobby-turn-status');
             
             if (isExistingRoom) {
-                // 是既有房間：隱藏勾選框，顯示讀取狀態
                 setupRow.style.display = 'none';
                 turnStatus.style.display = 'block';
                 turnStatus.innerHTML = "⏳ 讀取房間狀態中...";
                 turnStatus.style.color = "#9ca3af";
                 
-                // 動態讀取已經存在的房間回合設定
                 const snap = await getDoc(doc(db, "room_states", selectedRoom));
                 if (snap.exists()) {
                     let data = snap.data();
@@ -328,14 +327,9 @@
                 }
                 renderPlayerChips(globalRoomData[selectedRoom]);
             } else {
-                // 是新房間：顯示勾選框，隱藏狀態文字
                 setupRow.style.display = 'flex';
                 turnStatus.style.display = 'none';
                 renderPlayerChips([]);
-            }
-            
-            if(e.type !== 'input') { // 防止無限迴圈
-                document.querySelectorAll('#room-chips .chip').forEach(c => c.classList.remove('active'));
             }
         });
         
@@ -485,6 +479,13 @@
             onSnapshot(stateRef, (docSnap) => {
                 if (docSnap.exists()) {
                     let newState = docSnap.data();
+                    
+                    // ✨ 新增：如果當前玩家不在名單內（被刪除），立刻踢回大廳
+                    if (newState.playersOrder && !newState.playersOrder.includes(currentPlayer) && document.getElementById('game-screen').style.display === 'block') {
+                        showToast("你已被移除或已退出房間", "warning");
+                        setTimeout(() => window.location.reload(), 1500);
+                        return;
+                    }
                     
                     if (newState.isGameOver && !hasShownGameOver) {
                         hasShownGameOver = true; 
@@ -727,6 +728,21 @@
                 }
             }
         });
+        
+        document.getElementById('btn-leave-room').addEventListener('click', async () => {
+            const msg = "🏃 確定要刪除角色並退出嗎？\n\n注意：您的分數將被永久清除。";
+            if (await showModalAlert(msg, true)) {
+                // 使用管理員 API 刪除自己
+                apiCall('/admin_action', { 
+                    room_name: currentRoom, 
+                    admin_pwd: "", 
+                    action_type: "delete_user", 
+                    target_user: currentPlayer,
+                    user_name: currentPlayer 
+                });
+            }
+        });
+        
     </script>
 </body>
 </html>
