@@ -499,27 +499,47 @@
                         if (!myVotes.includes(currentPlayer) && !verifyDialog.open) {
                             
                             const showFinalVerify = () => {
-                                let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
+                                // 1. 找出最後一筆「成語對話」的索引位置
+                                let lastChatIndex = -1;
+                                for (let i = chatHistory.length - 1; i >= 0; i--) {
+                                    if (chatHistory[i].type === "chat") {
+                                        lastChatIndex = i;
+                                        break;
+                                    }
+                                }
+                                let lastChat = lastChatIndex >= 0 ? chatHistory[lastChatIndex] : null;
                                 
-                                // ✨ 終極防護 1：確認聊天紀錄已經跟上最新的房間狀態！
-                                // 避免抓到上一回合被退件的舊對話而提早跳窗
-                                let isChatSynced = lastChat && lastChat.text === newState.pendingIdiom && lastChat.user_name === newState.lastChatUser;
-    
+                                // 2. 檢查在這筆對話「之後」，有沒有被裁判打 ❌ 的紀錄
+                                // 如果有，代表這筆 lastChat 是「舊的、已經被退件的發言」，新的還沒送到！
+                                let isRejectedAfter = false;
+                                for (let i = lastChatIndex + 1; i < chatHistory.length; i++) {
+                                    if (chatHistory[i].type === "referee" && chatHistory[i].text.includes("❌")) {
+                                        isRejectedAfter = true;
+                                        break;
+                                    }
+                                }
+
+                                // 3. 終極防護：確認我們抓到的是「最新的、沒被退件的、跟當前狀態一致的」發言
+                                let isChatSynced = lastChat && 
+                                                   !isRejectedAfter && 
+                                                   lastChat.text === newState.pendingIdiom && 
+                                                   lastChat.user_name === newState.lastChatUser;
+
                                 if (!isChatSynced) {
                                     setTimeout(showFinalVerify, 300); // 聊天還沒送到，繼續等！
                                     return;
                                 }
                                 
-                                // ✨ 終極防護 2：預判這句話是不是「準備要播動畫」
-                                let msgId = lastChat.text + (lastChat.timestamp ? lastChat.timestamp.seconds : "");
+                                // 4. 預判這句話是不是「準備要播動畫」
+                                let msgId = lastChat.id; // ✨ 使用資料庫真實 ID
                                 let willAnimate = lastChat.text.length === 4 && window.lastAnimatedMsgId !== msgId;
-    
+
                                 // 如果正在播動畫，或者「準備要播動畫」，也繼續等！
                                 if (window.isAnimating || willAnimate) {
                                     setTimeout(showFinalVerify, 300);
                                     return;
                                 }
-    
+
                                 const textContainer = document.getElementById('final-verify-text');
                                 textContainer.innerHTML = `
                                     最後一個玩家 <b>${lastChat.user_name}</b> 的成語：<br>
@@ -529,15 +549,6 @@
                                 
                                 if (!verifyDialog.open) verifyDialog.showModal();
                             };
-                            
-                            showFinalVerify();
-    
-                        } else if (myVotes.includes(currentPlayer) && verifyDialog.open) {
-                            verifyDialog.close();
-                        }
-                    } else if (verifyDialog.open) {
-                        verifyDialog.close();
-                    }
                     
                     // ✨ 確保玩家真的成功加入過才踢出，避免網路時間差誤判
                     if (newState.playersOrder && newState.playersOrder.includes(currentPlayer)) {
@@ -622,9 +633,12 @@
                 chatBox.innerHTML = ""; chatHistory = [];
 
                 let currentValidIdiom = null; let currentPendingIdiom = null; let currentRejected = false;
-
+                
                 snapshot.forEach((doc) => {
-                    const msg = doc.data(); chatHistory.push(msg);
+                    const msg = doc.data(); 
+                    msg.id = doc.id; // ✨ 加入資料庫的真實唯一 ID！
+                    chatHistory.push(msg);
+                    
                     const isSelf = msg.user_name === currentPlayer;
                     const isSystem = ["system", "join_room", "game_over", "sos_start", "referee"].includes(msg.type);
                     let mType = msg.type || "chat";
@@ -675,7 +689,7 @@
                 
                 let latestMsg = chatHistory[chatHistory.length - 1];
                 if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
-                    let msgId = latestMsg.text + (latestMsg.timestamp ? latestMsg.timestamp.seconds : "");
+                    let msgId = latestMsg.id; // ✨ 使用真實 ID，絕對不會誤判！
                     if (window.lastAnimatedMsgId !== msgId) {
                         window.isAnimating = true;
                         triggerFlashyEffect(latestMsg.user_name, latestMsg.text);
