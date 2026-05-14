@@ -90,17 +90,23 @@
         #rules-dialog {
             width: 90%;
             max-width: 500px;
-            max-height: 80vh; /* 確保不會超出螢幕 */
-            margin: auto; /* 確保完美置中 */
+            max-height: 80vh; 
+            margin: auto; 
             border: none;
             border-radius: 16px;
             background: #1e293b;
             color: #f8fafc;
             padding: 0;
-            display: flex;
-            flex-direction: column; /* 讓頭、身體、尾巴垂直排列 */
+            /* 🚨 這裡拿掉了原本的 display: flex; 跟 flex-direction */
             box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         }
+        
+        /* ✨ 加上這段：只有當彈窗被正確開啟 (open) 時，才套用 flex 垂直排列 */
+        #rules-dialog[open] {
+            display: flex;
+            flex-direction: column; 
+        }
+
         #rules-dialog::backdrop {
             background: rgba(0,0,0,0.85);
             backdrop-filter: blur(3px);
@@ -135,6 +141,12 @@
             <h1>成語接龍🐉</h1>
             <button id="menu-btn" class="btn-dark" style="width: auto; padding: 8px 15px; display: none;">⚙️ 選單</button>
         </div>
+        
+        <div id="lobby-screen" class="panel">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4b5563; padding-bottom: 10px; margin-bottom: 15px; gap: 10px;">
+                <h2 style="margin: 0; border: none; padding: 0; font-size: 20px; white-space: nowrap; flex-shrink: 0;">🚪 進入遊戲大廳</h2>
+                <button onclick="document.getElementById('rules-dialog').showModal()" style="width: auto; background: #3b82f6; color: white; padding: 8px 12px; border-radius: 6px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; flex-shrink: 0;">📖 遊戲規則</button>
+            </div>
         
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4b5563; padding-bottom: 10px; margin-bottom: 15px; gap: 10px;">
             <h2 style="margin: 0; border: none; padding: 0; font-size: 20px; white-space: nowrap; flex-shrink: 0;">🚪 進入遊戲大廳</h2>
