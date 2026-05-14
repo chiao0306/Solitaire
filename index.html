@@ -607,16 +607,30 @@
                         let pendingToasts = [];
                         let oldScores = previousScores || {};
                         let newScores = newState.scores || {};
+                        
+                        // ✨ 新增：用來追蹤這回合是不是「正常接龍發言」
+                        let isTurnAction = false; 
+                        
                         for (let player in newScores) {
                             let oldScore = oldScores[player] || 50;
                             let newScore = newScores[player];
                             let diff = newScore - oldScore;
-                            if (diff > 0) pendingToasts.push({ text: `🎉 ${player} +${diff} 分`, type: "success" });
-                            else if (diff < 0) pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
+                            
+                            if (diff > 0) {
+                                pendingToasts.push({ text: `🎉 ${player} +${diff} 分`, type: "success" });
+                                // ✨ 如果加分是大於等於 10 分 (正常+10, 同字+20)，代表玩家送出了成語！
+                                // 如果是裁判還清白的 +5 分，就不會觸發動畫延遲
+                                if (diff >= 10) isTurnAction = true; 
+                            }
+                            else if (diff < 0) {
+                                pendingToasts.push({ text: `💥 ${player} ${diff} 分`, type: "danger" });
+                            }
                         }
                         
                         let newIdiom = newState.pendingIdiom;
-                        let willAnimate = (newIdiom && newIdiom !== previousPendingIdiom && newIdiom.length === 4);
+                        
+                        // ✨ 修正：不再比對字串一不一樣，而是看這回合有沒有人「因為接龍而加分」
+                        let willAnimate = (isTurnAction && newIdiom && newIdiom.length === 4);
                         
                         let toastDelay = willAnimate ? 3200 : 0; 
                         setTimeout(() => {
