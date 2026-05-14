@@ -85,6 +85,61 @@
         .turn-settings-row { display: flex; align-items: center; gap: 10px; }
         .turn-settings-box input[type="checkbox"] { width: 20px; height: 20px; margin: 0; cursor: pointer; accent-color: #ff4b4b; }
         .turn-settings-box label { margin: 0; font-size: 15px; cursor: pointer; color: #fff; }
+        
+        /* ✨ 精美說明書專屬樣式 */
+        #rules-dialog {
+            width: 95%;
+            max-width: 500px;
+            max-height: 80vh;
+            border: none;
+            border-radius: 20px;
+            background: #1e293b;
+            color: #f8fafc;
+            padding: 0;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+        #rules-dialog::backdrop {
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(5px);
+        }
+        .rules-header {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            padding: 20px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .rules-content {
+            padding: 25px;
+            overflow-y: auto;
+            max-height: calc(80vh - 120px);
+            line-height: 1.6;
+        }
+        .rules-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3b82f6;
+        }
+        .rules-section h3 {
+            margin-top: 0;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .rules-footer {
+            padding: 15px;
+            background: #1e293b;
+            border-top: 1px solid #334155;
+            text-align: center;
+        }
+        .rules-content b { color: #facc15; }
     </style>
 </head>
 <body>
@@ -94,11 +149,10 @@
             <button id="menu-btn" class="btn-dark" style="width: auto; padding: 8px 15px; display: none;">⚙️ 選單</button>
         </div>
         
-        <div id="lobby-screen" class="panel">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4b5563; padding-bottom: 10px; margin-bottom: 15px;">
-                <h2 style="margin: 0; border: none; padding: 0;">🚪 進入遊戲大廳</h2>
-                <a href="./README.md" target="_blank" style="background: #3b82f6; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: bold; transition: 0.2s;">📖 遊戲規則</a>
-            </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #4b5563; padding-bottom: 10px; margin-bottom: 15px;">
+            <h2 style="margin: 0; border: none; padding: 0;">🚪 進入遊戲大廳</h2>
+            <button onclick="document.getElementById('rules-dialog').showModal()" style="background: #3b82f6; color: white; padding: 6px 12px; border-radius: 6px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; transition: 0.2s;">📖 遊戲規則</button>
+        </div>
             
             <label>選擇或輸入遊戲室</label>
             <input type="text" id="room-input" placeholder="輸入房間名稱...">
@@ -188,7 +242,7 @@
         <button class="btn-dark" id="btn-restart" style="margin-bottom: 10px;">🔄 重新開始 (套用上方設定)</button>
         <button class="btn-dark" onclick="window.location.reload()" style="margin-bottom: 10px;">🚪 返回大廳</button>
         <button class="btn-danger" id="btn-leave-room" style="margin-bottom: 10px; margin-top: 5px;">🏃 刪除角色並退出房間</button>
-        <button class="btn-dark" onclick="window.open('./README.md', '_blank')" style="margin-bottom: 10px;">📖 遊戲規則</button>
+        <button class="btn-dark" onclick="document.getElementById('rules-dialog').showModal()" style="margin-bottom: 10px;">📖 遊戲規則</button>
  
         <hr>
         <div style="color: #ef4444; font-weight: bold; margin-bottom: 10px;">🚨 管理員危險區域</div>
@@ -217,6 +271,42 @@
         <div class="alert-btn-group">
             <button id="final-referee-btn" class="btn-primary" style="flex: 1; background: #3b82f6;">⚖️ 申請裁判</button>
             <button id="final-no-btn" class="btn-dark" style="flex: 1;">❌ 不用，直接結算</button>
+        </div>
+    </dialog>
+    
+    <dialog id="rules-dialog">
+        <div class="rules-header">📜 遊戲指南與秘笈</div>
+        <div class="rules-content">
+            <div class="rules-section">
+                <h3>🚀 快速開局</h3>
+                1. 輸入<b>房間名稱</b>與<b>暱稱</b>即可進入。<br>
+                2. 回合制模式需由房主在開局前勾選，一旦開局即無法更改。
+            </div>
+            <div class="rules-section">
+                <h3>📝 接龍規則</h3>
+                • 必須輸入<b>四個字</b>的成語。<br>
+                • 字首須與前一字尾<b>同音（含聲調）</b>或<b>同字</b>。<br>
+                • ❌ <b>嚴禁套娃</b>：不能輸入與上一句一模一樣的內容！
+            </div>
+            <div class="rules-section">
+                <h3>💰 積分獎勵</h3>
+                • <b>完美接龍 (同字)</b>：+20 分<br>
+                • <b>一般接龍 (同音)</b>：+10 分<br>
+                • <b>裁判清白獎勵</b>：+5 分
+            </div>
+            <div class="rules-section">
+                <h3>🛠️ 特殊技能</h3>
+                • <b>🆘 求生</b>：發動後連發 3 局，首局可<b>無視聲調</b>。<br>
+                • <b>⚖️ 裁判</b>：對上一句發動審查。判錯扣 20~30 分。<br>
+                • <b>💡 提示</b>：扣 5 分獲得成語線索。
+            </div>
+            <div class="rules-section" style="border-left-color: #ef4444;">
+                <h3>🏁 最終審查機制</h3>
+                回合結束後將進入「全體審查」。所有人可針對最後一句話申請裁判，若沒人申請或判決通過，遊戲才正式結算。
+            </div>
+        </div>
+        <div class="rules-footer">
+            <button class="btn-primary" onclick="document.getElementById('rules-dialog').close()" style="width: 120px;">我知道了</button>
         </div>
     </dialog>
 
