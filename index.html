@@ -584,13 +584,21 @@
                         if (newState.surrenderUser) {
                             showModalAlert(`🏳️ 遊戲結算\n\n${newState.surrenderUser} 接不出來，舉白旗投降了！`);
                         } else {
-                            // ✨ 結算訊息會自動涵蓋「分數歸零」或「達最大回合數」的狀況
                             let scoreEntries = Object.entries(newState.scores || {});
                             scoreEntries.sort((a, b) => b[1] - a[1]); 
                             
+                            // ✨ 重新設計的同分排名邏輯
+                            let currentRank = 0;
+                            let lastScore = -1;
                             let rankingList = scoreEntries.map((e, index) => {
-                                let medal = index === 0 ? "🥇" : (index === 1 ? "🥈" : (index === 2 ? "🥉" : "👤"));
-                                return `${medal} 第 ${index + 1} 名：${e[0]} (${e[1]}分)`;
+                                // 如果分數跟前一個人不同，名次才增加
+                                if (e[1] !== lastScore) {
+                                    currentRank = index + 1;
+                                }
+                                lastScore = e[1];
+
+                                let medal = currentRank === 1 ? "🥇" : (currentRank === 2 ? "🥈" : (currentRank === 3 ? "🥉" : "👤"));
+                                return `${medal} 第 ${currentRank} 名：${e[0]} (${e[1]}分)`;
                             }).join("\n");
                             
                             let reason = (newState.maxRounds > 0 && newState.currentRound >= newState.maxRounds) 
