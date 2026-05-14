@@ -492,7 +492,7 @@
                     let newState = docSnap.data();
                     const verifyDialog = document.getElementById('final-verify-dialog');
     
-                    // ✨ 更新：最終回合驗證跳窗 (加入「防搶拍」動畫預判與等待)
+                    // ✨ 更新：最終回合驗證跳窗 (加入「等聊天紀錄同步」與「防搶拍」機制)
                     if (newState.isVerifyingLastMove && !newState.isGameOver) {
                         const myVotes = newState.verificationVotes || [];
                         
@@ -501,12 +501,21 @@
                             const showFinalVerify = () => {
                                 let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
                                 
-                                // ✨ 新增防護：預先判斷這句話是不是「等一下馬上就要播動畫」
-                                let msgId = lastChat ? lastChat.text + (lastChat.timestamp ? lastChat.timestamp.seconds : "") : null;
-                                let willAnimate = lastChat && lastChat.text.length === 4 && window.lastAnimatedMsgId !== msgId;
+                                // ✨ 終極防護 1：確認聊天紀錄已經跟上最新的房間狀態！
+                                // 避免抓到上一回合被退件的舊對話而提早跳窗
+                                let isChatSynced = lastChat && lastChat.text === newState.pendingIdiom && lastChat.user_name === newState.lastChatUser;
     
-                                // 如果正在播動畫，或者「準備要播動畫」，就乖乖等 300 毫秒再查一次
-                                if (window.isAnimating || willAnimate || !lastChat) {
+                                if (!isChatSynced) {
+                                    setTimeout(showFinalVerify, 300); // 聊天還沒送到，繼續等！
+                                    return;
+                                }
+                                
+                                // ✨ 終極防護 2：預判這句話是不是「準備要播動畫」
+                                let msgId = lastChat.text + (lastChat.timestamp ? lastChat.timestamp.seconds : "");
+                                let willAnimate = lastChat.text.length === 4 && window.lastAnimatedMsgId !== msgId;
+    
+                                // 如果正在播動畫，或者「準備要播動畫」，也繼續等！
+                                if (window.isAnimating || willAnimate) {
                                     setTimeout(showFinalVerify, 300);
                                     return;
                                 }
