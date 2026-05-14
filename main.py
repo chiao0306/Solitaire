@@ -75,9 +75,9 @@ def get_default_state():
         "lastChatWasPerfectMatch": False, "isGameOver": False,
         "alreadyJudged": False, "roundHints": {},
         "surrenderUser": None,
-        # ✨ 新增：回合制相關變數
         "maxRounds": 0, "currentRound": 0, 
-        "trackedPlayers": [], "playerRounds": {}
+        "trackedPlayers": [], "playerRounds": {},
+        "isVerifyingLastMove": False, "verificationVotes": [] # ✨ 新增：最終驗證模式相關變數
     }
 
 def update_current_turn(state):
@@ -180,8 +180,10 @@ async def send_chat(req: ChatRequest):
             state["currentRound"] = min_round
             
             if state.get("maxRounds", 0) > 0:
+                # ✨ 修改：達到最大回合時，不直接 GameOver，而是進入驗證模式
                 if state["currentRound"] >= state["maxRounds"]:
-                    state["isGameOver"] = True
+                    state["isVerifyingLastMove"] = True
+                    state["verificationVotes"] = [] # 重置投票箱
                 elif min_round > old_round:
                     remaining = state["maxRounds"] - min_round
                     if 0 < remaining <= 3:
@@ -225,7 +227,22 @@ async def system_action(req: ActionRequest):
         changed = True
     elif req.action_type == "game_over":
         state["isGameOver"] = True
-        state["surrenderUser"] = req.user_name  
+        state["surrenderUser"] = req.user_name
+        changed = True
+        
+    # ✨ 新增區塊：處理最終回合的「不用裁判」投票
+    elif req.action_type == "final_vote_no":
+        if state.get("isVerifyingLastMove"):
+            votes = state.get("verificationVotes", [])
+            if req.user_name not in votes:
+                votes.append(req.user_name)
+                state["verificationVotes"] = votes
+            
+            # 檢查是否所有房間內的人都投了「不用」
+            active_players = state.get("playersOrder", [])
+            if len(votes) >= len(active_players):
+                state["isVerifyingLastMove"] = False
+                state["isGameOver"] = True # 全票通過，正式結算！
         changed = True
 
     if changed:
@@ -261,10 +278,20 @@ async def call_referee(req: ActionRequest):
                 state["isGameOver"] = True
         state["sosUser"] = state.get("lastChatPrevSosUser")
         state["sosCount"] = state.get("lastChatPrevSosCount")
+        
+        # ✨ 新增：如果是在最終驗證模式被判錯，解除驗證模式讓玩家重接！
+        if state.get("isVerifyingLastMove"):
+            state["isVerifyingLastMove"] = False 
+            
     elif '✅' in result_text:
         last_user = state.get("lastChatUser")
         if last_user and last_user in state.get("scores", {}):
             state["scores"][last_user] += 5
+            
+        # ✨ 新增：如果是在最終驗證模式判對了，就正式結算結束遊戲！
+        if state.get("isVerifyingLastMove"):
+            state["isVerifyingLastMove"] = False
+            state["isGameOver"] = True
             
     update_current_turn(state)
     save_room_state(req.room_name, state)
