@@ -279,7 +279,16 @@ async def call_referee(req: ActionRequest):
         state["sosUser"] = state.get("lastChatPrevSosUser")
         state["sosCount"] = state.get("lastChatPrevSosCount")
         
-        # ✨ 新增：如果是在最終驗證模式被判錯，解除驗證模式讓玩家重接！
+        # ✨ 新增修復：被裁判退件等同於該回合無效，個人回合數要 -1 扣回來
+        if last_user and last_user in state.get("trackedPlayers", []):
+            state["playerRounds"] = state.get("playerRounds", {})
+            state["playerRounds"][last_user] = max(0, state["playerRounds"].get(last_user, 0) - 1)
+            # 重新計算全域進度，避免回合爆表
+            tracked = state["trackedPlayers"]
+            if tracked:
+                state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
+        
+        # 解除驗證模式讓玩家重接
         if state.get("isVerifyingLastMove"):
             state["isVerifyingLastMove"] = False 
             
