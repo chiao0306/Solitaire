@@ -168,35 +168,27 @@ async def send_chat(req: ChatRequest):
         state["sosCount"] = 0
         user_finished_turn = True # 正常發言算完成回合
 
-    # ✨ 回合推進計算邏輯
+    # ✨ 整合：回合推進與對話框倒數提醒
     if user_finished_turn and user in state.get("trackedPlayers", []):
         state["playerRounds"] = state.get("playerRounds", {})
         state["playerRounds"][user] = state["playerRounds"].get(user, 0) + 1
         
         tracked = state["trackedPlayers"]
         if tracked:
-            # 紀錄改變前的全域回合數
             old_round = state.get("currentRound", 0)
-            
-            # 重新計算最新的全域回合數
             min_round = min([state["playerRounds"].get(p, 0) for p in tracked])
             state["currentRound"] = min_round
             
-            # 判斷是否結算或發送倒數警告
             if state.get("maxRounds", 0) > 0:
                 if state["currentRound"] >= state["maxRounds"]:
                     state["isGameOver"] = True
-                # ✨ 新增：當全域回合數推進 (min_round > old_round) 時，代表又輪到開局第一人了
                 elif min_round > old_round:
                     remaining = state["maxRounds"] - min_round
-                    # 如果剩下 3、2、1 回合，發送系統廣播到聊天室
                     if 0 < remaining <= 3:
                         db.collection(CHAT_COLLECTION).add({
-                            "room_name": req.room_name, 
-                            "user_name": "System", 
+                            "room_name": req.room_name, "user_name": "System", 
                             "text": f"【系統】🚨 比賽進入最後倒數，剩下 **{remaining}** 回合！", 
-                            "type": "system", 
-                            "timestamp": firestore.SERVER_TIMESTAMP
+                            "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
                         })
 
     update_current_turn(state)
@@ -402,37 +394,49 @@ async def restart_game(req: ActionRequest):
     
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
-    if req.admin_pwd != ADMIN_PASSWORD:
-        raise HTTPException(status_code=403, detail="密碼錯誤！")
+    # 如果不是管理員密碼，也不是正在刪除自己，則拒絕
+    is_self_delete = (req.action_type == "delete_user" and req.target_user == getattr(req, 'user_name', ''))
+    if req.admin_pwd != ADMIN_PASSWORD and not is_self_delete:
+        raise HTTPException(status_code=403, detail="權限不足！")
     
     state = get_room_state(req.room_name)
     doc_ref_meta = db.collection("system_meta").document("active_rooms")
     
     if req.action_type == "delete_user" and req.target_user:
-        delete_messages_safe(req.room_name, req.target_user)
+        target = req.target_user
+        delete_messages_safe(req.room_name, target)
         
-        # ✨ 100% 安全的大廳同步刪除法 (先讀取 -> 修改 -> 存回)
+        # ✨ 新增：發送離開系統訊息
+        db.collection(CHAT_COLLECTION).add({
+            "room_name": req.room_name, "user_name": "System", 
+            "text": f"({target}) 離開了遊戲", 
+            "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
+        })
+
+        # ✨ 同步大廳名單 (最安全寫法)
         snap = doc_ref_meta.get()
         if snap.exists:
             meta_data = snap.to_dict()
-            if req.room_name in meta_data and req.target_user in meta_data[req.room_name]:
-                del meta_data[req.room_name][req.target_user]
-                # 💡 如果房間被刪到空無一人，順便把整個房間從大廳清除！
-                if not meta_data[req.room_name]:  
-                    del meta_data[req.room_name]
-                doc_ref_meta.set(meta_data) 
+            if req.room_name in meta_data and target in meta_data[req.room_name]:
+                del meta_data[req.room_name][target]
+                if not meta_data[req.room_name]: del meta_data[req.room_name]
+                doc_ref_meta.set(meta_data)
         
-        if req.target_user in state.get("playersOrder", []):
-            state["playersOrder"].remove(req.target_user)
-        if req.target_user in state.get("scores", {}):
-            del state["scores"][req.target_user]
+        if target in state.get("playersOrder", []):
+            state["playersOrder"].remove(target)
+        if target in state.get("scores", {}):
+            del state["scores"][target]
             
-        # 回合制：從鎖定名單中剔除，並重新計算回合
-        if req.target_user in state.get("trackedPlayers", []):
-            state["trackedPlayers"].remove(req.target_user)
-            if req.target_user in state.get("playerRounds", {}):
-                del state["playerRounds"][req.target_user]
-            
+        # 處理逃生者中途離開
+        if state.get("sosUser") == target:
+            state["sosUser"] = None
+            state["sosCount"] = 0
+
+        # 回合制計算更新
+        if target in state.get("trackedPlayers", []):
+            state["trackedPlayers"].remove(target)
+            if target in state.get("playerRounds", {}):
+                del state["playerRounds"][target]
             tracked = state["trackedPlayers"]
             if tracked:
                 state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
