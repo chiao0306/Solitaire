@@ -135,7 +135,7 @@ async def send_chat(req: ChatRequest):
         raise HTTPException(status_code=403, detail="現在不是你的回合喔！請不要作弊 😠")
     
     if len(req.text) > 15:
-    raise HTTPException(status_code=400, detail="成語或輸入文字太長囉！")
+        raise HTTPException(status_code=400, detail="成語或輸入文字太長囉！")
     
     targetForBonus = state.get("lastIdiom") if state.get("rejected") else state.get("pendingIdiom")
     valid_target = targetForBonus if targetForBonus else req.last_idiom
