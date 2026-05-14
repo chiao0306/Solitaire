@@ -208,6 +208,18 @@
             <button id="alert-ok-btn" class="btn-primary" style="flex: 1;">確定</button>
         </div>
     </dialog>
+    
+    <dialog id="final-verify-dialog" style="text-align: center;">
+        <div style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #fbbf24;">🏁 最終回合結束審查</div>
+        <div style="margin-bottom: 20px; line-height: 1.6;">
+            遊戲回合已全數結束！<br>
+            在結算排名之前，有人要對最後一個發言申請裁判嗎？
+        </div>
+        <div class="alert-btn-group">
+            <button id="final-referee-btn" class="btn-primary" style="flex: 1; background: #3b82f6;">⚖️ 申請裁判</button>
+            <button id="final-no-btn" class="btn-dark" style="flex: 1;">❌ 不用，直接結算</button>
+        </div>
+    </dialog>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
@@ -476,9 +488,25 @@
             let hasShownGameOver = false; 
             const stateRef = doc(db, "room_states", currentRoom);
             
-              onSnapshot(stateRef, (docSnap) => {
+               onSnapshot(stateRef, (docSnap) => {
                 if (docSnap.exists()) {
                     let newState = docSnap.data();
+                    const verifyDialog = document.getElementById('final-verify-dialog');
+    
+                    // ✨ 整合：最終回合驗證跳窗的同步顯示邏輯
+                    if (newState.isVerifyingLastMove && !newState.isGameOver) {
+                        // 如果我還沒點過「不用」，且跳窗沒開，就打開它
+                        const myVotes = newState.verificationVotes || [];
+                        if (!myVotes.includes(currentPlayer) && !verifyDialog.open) {
+                            verifyDialog.showModal();
+                        } else if (myVotes.includes(currentPlayer) && verifyDialog.open) {
+                            // 如果我點過了，就關閉跳窗等待其他人完成
+                            verifyDialog.close();
+                        }
+                    } else if (verifyDialog.open) {
+                        // 如果驗證模式結束（不論是判決中或是已結算），強制關閉跳窗
+                        verifyDialog.close();
+                    }
                     
                     // ✨ 確保玩家真的成功加入過才踢出，避免網路時間差誤判
                     if (newState.playersOrder && newState.playersOrder.includes(currentPlayer)) {
@@ -759,6 +787,36 @@
                     user_name: currentPlayer 
                 });
             }
+        });
+        
+        // ✨ 新增：最終驗證跳窗的按鈕功能
+        
+        // 1. 最終審查：申請裁判
+        document.getElementById('final-referee-btn').addEventListener('click', async () => {
+            document.getElementById('final-verify-dialog').close();
+            let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
+            if(lastChat) {
+                apiCall('/call_referee', { 
+                    room_name: currentRoom, 
+                    user_name: currentPlayer, 
+                    action_type: "call", 
+                    text: "針對最終發言呼叫裁判", 
+                    avatar: currentAvatar, 
+                    target_text: lastChat.text 
+                });
+            }
+        });
+
+        // 2. 最終審查：不需要
+        document.getElementById('final-no-btn').addEventListener('click', () => {
+            // 發送一個「我投不用票」的訊號給後端
+            apiCall('/system_action', { 
+                room_name: currentRoom, 
+                user_name: currentPlayer, 
+                action_type: "final_vote_no", 
+                text: "投票不需裁判", 
+                avatar: currentAvatar 
+            });
         });
         
     </script>
