@@ -374,9 +374,6 @@
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
 
-            let hasChat = chatHistory.some(m => m.type === 'chat');
-            refBtn.disabled = (gameState.alreadyJudged || !hasChat || gameState.isGameOver);
-
             let sosString = ""; let remainingSos = 0;
             if (gameState.sosUser) { 
                 remainingSos = 3 - gameState.sosCount; 
@@ -386,6 +383,11 @@
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
             if (!targetWord) targetWord = "";
 
+            // ✨ 1. 確保裁判按鈕的解鎖條件是「獨立」的，不放在回合判斷內
+            let hasChat = chatHistory.some(m => m.type === 'chat');
+            refBtn.disabled = (gameState.alreadyJudged || !hasChat || gameState.isGameOver);
+
+            // ✨ 2. 回合判斷邏輯
             if (isMyTurn) {
                 if (hasStarted) {
                     turnInfo.innerHTML = `${myInfoPrefix}🟢 輪到你了！接續「${targetWord}」${sosString}`;
@@ -393,7 +395,10 @@
                 } else {
                     turnInfo.innerHTML = `${myInfoPrefix}🟢 尚未開局，任何人皆可出題！`; msgInput.placeholder = "你是第一個，請出題開局...";
                 }
-                turnInfo.style.color = "#4CAF50"; msgInput.disabled = false; sendBtn.disabled = false; surBtn.disabled = false;
+                turnInfo.style.color = "#4CAF50"; 
+                msgInput.disabled = false; 
+                sendBtn.disabled = false; 
+                surBtn.disabled = false; // 投降按鈕啟用
                 
                 let myScore = scores[currentPlayer] || 0;
                 let myHints = roundHints[currentPlayer] || 0;
@@ -401,17 +406,27 @@
                 else if (myHints === 1) { hintBtn.textContent = "💡 提示 (2/2)"; hintBtn.disabled = (myScore <= 5); } 
                 else { hintBtn.textContent = "🚫 提示耗盡"; hintBtn.disabled = true; }
                 sosBtn.disabled = !!gameState.sosUser;
+
             } else {
                 let currentActor = gameState.currentTurn || '其他人';
                 if (hasStarted) {
                     turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待 ${currentActor} 接「${targetWord}」${sosString}`;
                     msgInput.placeholder = gameState.sosUser === currentActor ? `🚨：${currentActor} 逃生中 (剩 ${remainingSos} 次)...` : `⏳ 等待 ${currentActor} 接「${targetWord}」...`;
-                } else { turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待開局...`; msgInput.placeholder = "等待任何人出題..."; }
+                } else { 
+                    turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待開局...`; 
+                    msgInput.placeholder = "等待任何人出題..."; 
+                }
                 
-                turnInfo.style.color = "gray"; msgInput.disabled = true; sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
+                // 🚨 關鍵在這裡：鎖定各種按鈕，但「沒有」鎖定 refBtn (裁判)！
+                turnInfo.style.color = "gray"; 
+                msgInput.disabled = true; 
+                sendBtn.disabled = true; 
+                hintBtn.disabled = true; 
+                sosBtn.disabled = true; 
+                surBtn.disabled = true; 
+                
                 hintBtn.textContent = "💡 提示";
             }
-        }
 
         function triggerFlashyEffect(userName, text) {
             const overlay = document.getElementById('idiom-overlay');
