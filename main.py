@@ -314,6 +314,17 @@ async def call_referee(req: ActionRequest):
             state["isVerifyingLastMove"] = False
             state["isGameOver"] = True
             
+    # ✨ [新增] 容錯機制：如果 AI 發神經，沒有給出明確的符號
+    else:
+        state["alreadyJudged"] = False  # 解除裁判鎖定，讓玩家可以重新判定或收回
+        db.collection(CHAT_COLLECTION).add({
+            "room_name": req.room_name, "user_name": "Referee (AI)", 
+            "text": f"⚠️ 裁判陷入了深思，沒有給出明確的 ✅ 或 ❌，請再試一次！\n(AI 回覆原文：{result_text})", 
+            "type": "referee", "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
+        })
+        save_room_state(req.room_name, state)
+        return {"status": "success"}
+            
     update_current_turn(state)
     save_room_state(req.room_name, state)
 
