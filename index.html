@@ -211,9 +211,8 @@
     
     <dialog id="final-verify-dialog" style="text-align: center;">
         <div style="font-size: 20px; font-weight: bold; margin-bottom: 15px; color: #fbbf24;">🏁 最終回合結束審查</div>
-        <div style="margin-bottom: 20px; line-height: 1.6;">
-            遊戲回合已全數結束！<br>
-            在結算排名之前，有人要對最後一個發言申請裁判嗎？
+        <div id="final-verify-text" style="margin-bottom: 20px; line-height: 1.6;">
+            正在準備結算資訊...
         </div>
         <div class="alert-btn-group">
             <button id="final-referee-btn" class="btn-primary" style="flex: 1; background: #3b82f6;">⚖️ 申請裁判</button>
@@ -493,20 +492,44 @@
                     let newState = docSnap.data();
                     const verifyDialog = document.getElementById('final-verify-dialog');
     
-                    // ✨ 整合：最終回合驗證跳窗的同步顯示邏輯
+                    // ✨ 更新：最終回合驗證跳窗 (加入動畫等待與動態內容)
                     if (newState.isVerifyingLastMove && !newState.isGameOver) {
-                        // 如果我還沒點過「不用」，且跳窗沒開，就打開它
                         const myVotes = newState.verificationVotes || [];
+                        
                         if (!myVotes.includes(currentPlayer) && !verifyDialog.open) {
-                            verifyDialog.showModal();
-                        } else if (myVotes.includes(currentPlayer) && verifyDialog.open) {
-                            // 如果我點過了，就關閉跳窗等待其他人完成
-                            verifyDialog.close();
-                        }
-                    } else if (verifyDialog.open) {
-                        // 如果驗證模式結束（不論是判決中或是已結算），強制關閉跳窗
+                            
+                            // 定義一個內部函式來檢查動畫與顯示跳窗
+                            const showFinalVerify = () => {
+                                // 1. 抓取對話紀錄中的最後一個成語
+                                let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
+                                
+                                // 2. 如果動畫還在跑 (isAnimating)，或是對話紀錄還沒同步，就等 300ms 再檢查一次
+                                if (window.isAnimating || !lastChat) {
+                                    setTimeout(showFinalVerify, 300);
+                                    return;
+                                }
+    
+                                // 3. 動畫跑完了，更新跳窗文字內容
+                                const textContainer = document.getElementById('final-verify-text');
+                                textContainer.innerHTML = `
+                                    最後一個玩家 <b>${lastChat.user_name}</b> 的成語：<br>
+                                    <span style="font-size:26px; color:#FFD700; font-weight:900;">「${lastChat.text}」</span><br>
+                                    有人要提出裁判申請嗎？
+                                `;
+                                
+                                // 4. 正式彈出跳窗
+                                if (!verifyDialog.open) verifyDialog.showModal();
+                            };
+                            
+                            showFinalVerify(); // 啟動檢查流程
+
+                    } else if (myVotes.includes(currentPlayer) && verifyDialog.open) {
                         verifyDialog.close();
                     }
+                } else if (verifyDialog.open) {
+                    verifyDialog.close();
+                }
+
                     
                     // ✨ 確保玩家真的成功加入過才踢出，避免網路時間差誤判
                     if (newState.playersOrder && newState.playersOrder.includes(currentPlayer)) {
