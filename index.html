@@ -24,7 +24,7 @@
         .btn-danger { background: #dc2626; }
         
         #game-screen { display: none; }
-        .chat-box { background: #1a1c23; border-radius: 10px; padding: 15px; height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; border: 1px solid #31333f; }
+        .chat-box { background: #1a1c23; border-radius: 10px; padding: 15px; height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; border: 1px solid #31333f; }
         
         .msg-wrapper { display: flex; flex-direction: column; width: 100%; }
         .msg-wrapper.self { align-items: flex-end; }   
@@ -476,12 +476,11 @@
             let hasShownGameOver = false; 
             const stateRef = doc(db, "room_states", currentRoom);
             
-            onSnapshot(stateRef, (docSnap) => {
+              onSnapshot(stateRef, (docSnap) => {
                 if (docSnap.exists()) {
                     let newState = docSnap.data();
                     
-                    // ✨ 新增：如果當前玩家不在名單內（被刪除），立刻踢回大廳
-                    // ✨ 修正踢出邏輯：確保玩家真的成功加入過才踢出，避免網路時間差誤判
+                    // ✨ 確保玩家真的成功加入過才踢出，避免網路時間差誤判
                     if (newState.playersOrder && newState.playersOrder.includes(currentPlayer)) {
                         window.hasJoinedSuccessfully = true;
                     }
@@ -546,8 +545,15 @@
                     document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
                     updateUI();
                 } else {
-                    gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {}, maxRounds: 0, currentRound: 0 };
-                    updateUI();
+                    // ✨ 情況 B：最後一人離開，房間狀態文件已被後端徹底刪除
+                    if (window.hasJoinedSuccessfully && document.getElementById('game-screen').style.display === 'block') {
+                        showToast("房間已結束並清空", "warning");
+                        setTimeout(() => window.location.reload(), 1200);
+                    } else {
+                        // 剛開房的瞬間，給予預設狀態
+                        gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {}, maxRounds: 0, currentRound: 0 };
+                        updateUI();
+                    }
                 }
             });
 
