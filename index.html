@@ -481,7 +481,11 @@
                     let newState = docSnap.data();
                     
                     // ✨ 新增：如果當前玩家不在名單內（被刪除），立刻踢回大廳
-                    if (newState.playersOrder && !newState.playersOrder.includes(currentPlayer) && document.getElementById('game-screen').style.display === 'block') {
+                    // ✨ 修正踢出邏輯：確保玩家真的成功加入過才踢出，避免網路時間差誤判
+                    if (newState.playersOrder && newState.playersOrder.includes(currentPlayer)) {
+                        window.hasJoinedSuccessfully = true;
+                    }
+                    if (window.hasJoinedSuccessfully && newState.playersOrder && !newState.playersOrder.includes(currentPlayer) && document.getElementById('game-screen').style.display === 'block') {
                         showToast("你已被移除或已退出房間", "warning");
                         setTimeout(() => window.location.reload(), 1500);
                         return;
