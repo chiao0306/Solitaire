@@ -46,7 +46,7 @@ class ActionRequest(BaseModel):
     max_rounds: Optional[int] = 0  # ✨ 新增：用來接收回合制設定
 
 class AdminRequest(BaseModel):
-    room_name: str; admin_pwd: str; action_type: str; target_user: Optional[str] = None
+    room_name: str; admin_pwd: str; action_type: str; target_user: Optional[str] = None; user_name: Optional[str] = None
 
 # ✨ 台灣讀音補丁
 from pypinyin import load_single_dict
@@ -394,8 +394,8 @@ async def restart_game(req: ActionRequest):
     
 @app.post("/admin_action")
 async def admin_action(req: AdminRequest):
-    # 如果不是管理員密碼，也不是正在刪除自己，則拒絕
-    is_self_delete = (req.action_type == "delete_user" and req.target_user == getattr(req, 'user_name', ''))
+    # ✨ 修正 1：現在可以正確讀取到 req.user_name 來判斷是不是自己了
+    is_self_delete = (req.action_type == "delete_user" and req.target_user == req.user_name)
     if req.admin_pwd != ADMIN_PASSWORD and not is_self_delete:
         raise HTTPException(status_code=403, detail="權限不足！")
     
@@ -404,9 +404,10 @@ async def admin_action(req: AdminRequest):
     
     if req.action_type == "delete_user" and req.target_user:
         target = req.target_user
-        delete_messages_safe(req.room_name, target)
+        # 🚨 修正 2：已經把 delete_messages_safe(req.room_name, target) 這一行拿掉了！
+        # 這樣玩家的發言就會留在資料庫裡，並在畫面上顯示 (已離開)
         
-        # ✨ 新增：發送離開系統訊息
+        # 發送離開系統訊息
         db.collection(CHAT_COLLECTION).add({
             "room_name": req.room_name, "user_name": "System", 
             "text": f"({target}) 離開了遊戲", 
