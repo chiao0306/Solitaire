@@ -323,38 +323,50 @@ async def call_referee(req: ActionRequest):
         last_user = state.get("lastChatUser")
         if last_user and last_user in state.get("scores", {}):
             penalty = 40 if state.get("lastChatWasPerfectMatch") else 30
+            
+            # ✨ 整合 1：求生連擊判錯，前兩擊只小扣 5 分
+            prev_sos_user = state.get("lastChatPrevSosUser")
+            prev_sos_count = state.get("lastChatPrevSosCount", 0)
+            
+            if last_user == prev_sos_user and prev_sos_count < 2:
+                penalty = 5  
+                
             state["scores"][last_user] -= penalty
             if state["scores"][last_user] <= 0:
                 state["isGameOver"] = True
+                
         state["sosUser"] = state.get("lastChatPrevSosUser")
         state["sosCount"] = state.get("lastChatPrevSosCount")
         
-        # ✨ 新增修復：被裁判退件等同於該回合無效，個人回合數要 -1 扣回來
         if last_user and last_user in state.get("trackedPlayers", []):
             state["playerRounds"] = state.get("playerRounds", {})
             state["playerRounds"][last_user] = max(0, state["playerRounds"].get(last_user, 0) - 1)
-            # 重新計算全域進度，避免回合爆表
             tracked = state["trackedPlayers"]
             if tracked:
                 state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
         
-        # 解除驗證模式讓玩家重接
         if state.get("isVerifyingLastMove"):
             state["isVerifyingLastMove"] = False 
             
     elif '✅' in result_text:
         last_user = state.get("lastChatUser")
         if last_user and last_user in state.get("scores", {}):
-            state["scores"][last_user] += 5
             
-        # ✨ 新增：如果是在最終驗證模式判對了，就正式結算結束遊戲！
+            # ✨ 整合 2：求生連擊判對，前兩擊不給 5 分清白獎勵
+            prev_sos_user = state.get("lastChatPrevSosUser")
+            prev_sos_count = state.get("lastChatPrevSosCount", 0)
+            
+            # 只有在「不是」求生連擊前兩擊的情況下，才加 5 分
+            if not (last_user == prev_sos_user and prev_sos_count < 2):
+                state["scores"][last_user] += 5
+            
         if state.get("isVerifyingLastMove"):
             state["isVerifyingLastMove"] = False
             state["isGameOver"] = True
-            
-    # ✨ [新增] 容錯機制：如果 AI 發神經，沒有給出明確的符號
+
+    # 容錯機制：如果 AI 發神經，沒有給出明確的符號
     else:
-        state["alreadyJudged"] = False  # 解除裁判鎖定，讓玩家可以重新判定或收回
+        state["alreadyJudged"] = False 
         db.collection(CHAT_COLLECTION).add({
             "room_name": req.room_name, "user_name": "Referee (AI)", 
             "text": f"⚠️ 裁判陷入了深思，沒有給出明確的 ✅ 或 ❌，請再試一次！\n(AI 回覆原文：{result_text})", 
