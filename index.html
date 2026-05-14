@@ -577,7 +577,12 @@
                     if (mType === "join_room" || mType === "sos_start") displayText = `${msg.avatar || '😎'} ${msg.user_name} ${msg.text}`;
                     if (mType === "system" && msg.text.includes("3 連擊逃脫成功")) msgClass += " combo-success";
 
-                    let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar || '😎'} ${msg.user_name}</div>` : "";
+                    // ✨ 判斷該發言者是否已經不在房間名單內
+                    const isLeft = gameState.playersOrder && !gameState.playersOrder.includes(msg.user_name) && !isSystem && msg.user_name !== "System" && !msg.user_name.includes("AI");
+                    let nameSuffix = isLeft ? " <span style='font-size:10px; color:#ef4444;'>(已離開)</span>" : "";
+                    let opacityStyle = isLeft ? "opacity: 0.5; filter: grayscale(50%);" : "";
+
+                    let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar || '😎'} ${msg.user_name}${nameSuffix}</div>` : "";
                     
                     if (mType === "referee" && msg.requested_by) {
                         if (msg.text.includes("✅") || msg.text.includes("❌")) {
@@ -586,7 +591,7 @@
                     }
 
                     chatBox.innerHTML += `
-                        <div class="msg-wrapper ${wrapperClass}">
+                        <div class="msg-wrapper ${wrapperClass}" style="${opacityStyle}">
                             ${infoHtml}
                             <div class="msg ${msgClass}">${displayText}</div>
                         </div>`;
