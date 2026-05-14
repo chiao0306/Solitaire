@@ -741,7 +741,10 @@
         document.getElementById('btn-leave-room').addEventListener('click', async () => {
             const msg = "🏃 確定要刪除角色並退出嗎？\n\n注意：您的分數將被永久清除。";
             if (await showModalAlert(msg, true)) {
-                // 使用管理員 API 刪除自己
+                
+                // ✨ 新增這行：確認離開後，先把設定選單關掉！
+                document.getElementById('menu-dialog').close();
+                
                 apiCall('/admin_action', { 
                     room_name: currentRoom, 
                     admin_pwd: "", 
