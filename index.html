@@ -322,6 +322,7 @@
         let globalRoomData = {};
         let previousScores = null; 
         let previousPendingIdiom = null; 
+        let unsubscribeLobby = null; // ✨ 新增這行
         
         // ✨ 新增：防止 XSS 攻擊的字元跳脫函式
         function escapeHTML(str) {
@@ -397,7 +398,8 @@
         listenToGlobalRooms();
         function listenToGlobalRooms() {
             const docRef = doc(db, "system_meta", "active_rooms");
-            onSnapshot(docRef, (docSnap) => {
+            unsubscribeLobby = onSnapshot(docRef, (docSnap) => { // ✨ 加上 unsubscribeLobby = 
+                if (docSnap.exists()) {
                 if (docSnap.exists()) {
                     globalRoomData = docSnap.data(); renderRoomChips(Object.keys(globalRoomData));
                     const currentInput = document.getElementById('room-input').value;
@@ -577,6 +579,8 @@
             document.getElementById('lobby-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('menu-btn').style.display = 'block';
+
+            if (unsubscribeLobby) unsubscribeLobby(); // ✨ 新增這行：進入遊戲後停止監聽大廳！
 
             let hasShownGameOver = false; 
             const stateRef = doc(db, "room_states", currentRoom);
