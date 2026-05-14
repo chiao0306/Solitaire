@@ -125,6 +125,18 @@ def delete_messages_safe(room_name, target_user=None):
 async def send_chat(req: ChatRequest):
     state = get_room_state(req.room_name)
     
+    # ✨ 新增核心防護：檢查是不是輪到這個人 (防駭客硬戳 API)
+    current_turn = state.get("currentTurn")
+    has_started = bool(state.get("lastIdiom") or state.get("pendingIdiom"))
+    players = state.get("playersOrder", [])
+    
+    # 規則：如果遊戲已經開始、房間裡不只一人，且當前輪到的不是該玩家，就直接阻擋！
+    if has_started and len(players) > 1 and current_turn and current_turn != req.user_name:
+        raise HTTPException(status_code=403, detail="現在不是你的回合喔！請不要作弊 😠")
+    
+    if len(req.text) > 15:
+    raise HTTPException(status_code=400, detail="成語或輸入文字太長囉！")
+    
     targetForBonus = state.get("lastIdiom") if state.get("rejected") else state.get("pendingIdiom")
     valid_target = targetForBonus if targetForBonus else req.last_idiom
     
