@@ -236,6 +236,14 @@
         let globalRoomData = {};
         let previousScores = null; 
         let previousPendingIdiom = null; 
+        
+        // ✨ 新增：防止 XSS 攻擊的字元跳脫函式
+        function escapeHTML(str) {
+            if (!str) return "";
+            return str.toString().replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag])
+            );
+        }
 
         function showModalAlert(msg, showCancel = false) {
             return new Promise((resolve) => {
@@ -645,8 +653,14 @@
                 let currentValidIdiom = null; let currentPendingIdiom = null; let currentRejected = false;
                 
                 snapshot.forEach((doc) => {
+                    
                     const msg = doc.data(); 
-                    msg.id = doc.id; // ✨ 加入資料庫的真實唯一 ID！
+                    msg.id = doc.id; 
+                    
+                    // ✨ 新增：在這裡對使用者輸入的文字進行過濾！
+                    const safeText = escapeHTML(msg.text);
+                    const safeUserName = escapeHTML(msg.user_name);
+
                     chatHistory.push(msg);
                     
                     const isSelf = msg.user_name === currentPlayer;
