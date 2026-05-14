@@ -443,7 +443,14 @@ async def admin_action(req: AdminRequest):
                 state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
                 if state.get("maxRounds", 0) > 0 and state["currentRound"] >= state["maxRounds"]:
                     state["isGameOver"] = True
-            
+
+            # ✨ 新增：判斷這是不是房間裡的最後一個人？
+            if not state.get("playersOrder"):
+                # 如果玩家名單空了，就等同於執行「徹底毀滅清空房間」！
+                delete_messages_safe(req.room_name) # 清空所有對話
+                db.collection(STATE_COLLECTION).document(req.room_name).delete() # 清除房間狀態
+                return {"status": "success"} # 直接結束，不要再存檔了
+                
         update_current_turn(state)
         save_room_state(req.room_name, state)
         
