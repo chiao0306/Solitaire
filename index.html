@@ -648,39 +648,58 @@
             const q = query(collection(db, "chat_messages"), where("room_name", "==", currentRoom), orderBy("timestamp", "asc"));
             onSnapshot(q, (snapshot) => {
                 const chatBox = document.getElementById('chat-box');
-                chatBox.innerHTML = ""; chatHistory = [];
-
-                let currentValidIdiom = null; let currentPendingIdiom = null; let currentRejected = false;
+                chatBox.innerHTML = ""; 
                 
+                // ✨ 1. 先把所有訊息抓出來存成陣列
+                let rawDocs = [];
                 snapshot.forEach((doc) => {
                     const msg = doc.data(); 
                     msg.id = doc.id; 
-                    chatHistory.push(msg);
-                    
-                    // ✨ 1. 在這裡將文字過濾，產生安全版本的字串
+                    rawDocs.push(msg);
+                });
+
+                // ✨ 2. 手動排序：如果時間完全一樣，強迫「玩家成語 (chat)」排在「系統提醒 (system)」前面
+                // 這樣可以解決提醒文字卡在成語中間的問題，也能確保動畫邏輯抓到正確的最後一筆成語
+                rawDocs.sort((a, b) => {
+                    let tA = a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : Date.now();
+                    let tB = b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : Date.now();
+                    if (tA === tB) {
+                        if (a.type === "chat" && b.type === "system") return -1;
+                        if (a.type === "system" && b.type === "chat") return 1;
+                    }
+                    return tA - tB;
+                });
+
+                chatHistory = rawDocs;
+                let currentValidIdiom = null; let currentPendingIdiom = null; let currentRejected = false;
+                
+                // ✨ 3. 使用排好序的 chatHistory 開始處理邏輯與畫面
+                chatHistory.forEach((msg) => {
+                    // 安全過濾字串
                     const safeText = escapeHTML(msg.text);
                     const safeUserName = escapeHTML(msg.user_name);
 
-                    // 💡 注意：像下面這行用來「判斷是不是自己」的邏輯，要維持用原本的 msg.user_name
                     const isSelf = msg.user_name === currentPlayer;
                     const isSystem = ["system", "join_room", "game_over", "sos_start", "referee"].includes(msg.type);
                     let mType = msg.type || "chat";
                     
-                    // ✨ 2. 下面這段開始，只要是跟「顯示」或「比對內容」有關的，都換成 safeText
+                    // 遊戲邏輯比對 (接龍狀態追蹤)
                     if (mType === "system" && safeText.includes("題目為")) {
-                        let match = safeText.match(/「\*\*([^]+?)\*\*」/); currentValidIdiom = match ? match[1] : safeText.slice(-4);
+                        let match = safeText.match(/「\*\*([^]+?)\*\*」/); 
+                        currentValidIdiom = match ? match[1] : safeText.slice(-4);
                         currentPendingIdiom = currentValidIdiom; currentRejected = false;
                     } else if (mType === "chat" && msg.user_name !== "System" && !msg.user_name.includes("AI")) {
                         if (!currentRejected) currentValidIdiom = currentPendingIdiom;
                         currentPendingIdiom = safeText; currentRejected = false;
-                    } else if (mType === "referee" && safeText.includes("❌")) { currentRejected = true; }
+                    } else if (mType === "referee" && safeText.includes("❌")) { 
+                        currentRejected = true; 
+                    }
 
                     let wrapperClass = isSystem ? "system" : (isSelf ? "self" : "other");
                     let msgClass = msg.type || "chat";
                     if (!isSystem) msgClass += isSelf ? " self" : " other";
                     if (mType === "system" && safeText.includes("題目為")) msgClass += " topic-prompt";
 
-                    // ✨ 3. 顯示的文字改用 safeText 和 safeUserName
                     let displayText = safeText;
                     if (mType === "join_room" || mType === "sos_start") displayText = `${msg.avatar || '😎'} ${safeUserName} ${safeText}`;
                     if (mType === "system" && safeText.includes("3 連擊逃脫成功")) msgClass += " combo-success";
@@ -689,10 +708,8 @@
                     let nameSuffix = isLeft ? " <span style='font-size:10px; color:#ef4444;'>(已離開)</span>" : "";
                     let opacityStyle = isLeft ? "opacity: 0.5; filter: grayscale(50%);" : "";
 
-                    // ✨ 4. 這裡的名字換成 safeUserName
                     let infoHtml = (!isSystem) ? `<div class="msg-info">${msg.avatar || '😎'} ${safeUserName}${nameSuffix}</div>` : "";
                     
-                    // 💡 如果是呼叫裁判的人，他的名字也過濾一下比較保險
                     if (mType === "referee" && msg.requested_by) {
                         const safeRequestedBy = escapeHTML(msg.requested_by);
                         if (safeText.includes("✅") || safeText.includes("❌")) {
@@ -700,7 +717,7 @@
                         }
                     }
 
-                    // ✨ 5. 最後塞進 HTML 時，就會是安全的內容了
+                    // 渲染到畫面上
                     chatBox.innerHTML += `
                         <div class="msg-wrapper ${wrapperClass}" style="${opacityStyle}">
                             ${infoHtml}
@@ -713,15 +730,22 @@
                     }
                 });
 
+                // 讓聊天室捲軸自動滾動到最下方
                 chatBox.scrollTop = chatBox.scrollHeight;
                 
-                let latestMsg = chatHistory[chatHistory.length - 1];
-                if (latestMsg && latestMsg.type === "chat" && latestMsg.text.length === 4) {
-                    let msgId = latestMsg.id; // ✨ 使用真實 ID，絕對不會誤判！
+                // 4. 修正動畫觸發邏輯：
+                // 不要只抓最後一筆訊息，而是「往回找」最新的一筆玩家發言 (type === "chat")
+                // 這樣就算最後一筆是系統倒數提醒，動畫也能正常播放
+                let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
+                
+                if (lastChat && lastChat.text.length === 4) {
+                    let msgId = lastChat.id; // 使用資料庫產生的唯一 ID 避免重複播放
                     if (window.lastAnimatedMsgId !== msgId) {
                         window.isAnimating = true;
-                        triggerFlashyEffect(latestMsg.user_name, latestMsg.text);
+                        triggerFlashyEffect(lastChat.user_name, lastChat.text);
                         window.lastAnimatedMsgId = msgId;
+                        
+                        // 動畫播放時間約 3 秒，結束後解除鎖定
                         setTimeout(() => { window.isAnimating = false; }, 3200);
                     }
                 }
