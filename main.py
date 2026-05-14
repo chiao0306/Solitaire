@@ -123,20 +123,6 @@ def delete_messages_safe(room_name, target_user=None):
 
 @app.post("/send_chat")
 async def send_chat(req: ChatRequest):
-    state = get_room_state(req.room_name)
-    
-    targetForBonus = state.get("lastIdiom") if state.get("rejected") else state.get("pendingIdiom")
-    valid_target = targetForBonus if targetForBonus else req.last_idiom
-    
-
-    
-    if not check_idiom_connection(valid_target, req.text, req.ignore_tone):
-        raise HTTPException(status_code=400, detail="拼音或聲調不符！請重新輸入。")
-
-
-
-@app.post("/send_chat")
-async def send_chat(req: ChatRequest):
     # ✨ 1. 準備 Transaction 與所需的 Document References
     transaction_obj = db.transaction()
     room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
