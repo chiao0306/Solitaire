@@ -400,7 +400,6 @@
             const docRef = doc(db, "system_meta", "active_rooms");
             unsubscribeLobby = onSnapshot(docRef, (docSnap) => { // ✨ 加上 unsubscribeLobby = 
                 if (docSnap.exists()) {
-                if (docSnap.exists()) {
                     globalRoomData = docSnap.data(); renderRoomChips(Object.keys(globalRoomData));
                     const currentInput = document.getElementById('room-input').value;
                     if (currentInput) document.getElementById('room-input').dispatchEvent(new Event('input'));
