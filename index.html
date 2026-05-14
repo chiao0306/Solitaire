@@ -518,7 +518,6 @@
                                 let lastChat = lastChatIndex >= 0 ? chatHistory[lastChatIndex] : null;
                                 
                                 // 2. 檢查在這筆對話「之後」，有沒有被裁判打 ❌ 的紀錄
-                                // 如果有，代表這筆 lastChat 是「舊的、已經被退件的發言」，新的還沒送到！
                                 let isRejectedAfter = false;
                                 for (let i = lastChatIndex + 1; i < chatHistory.length; i++) {
                                     if (chatHistory[i].type === "referee" && chatHistory[i].text.includes("❌")) {
@@ -534,16 +533,20 @@
                                                    lastChat.user_name === newState.lastChatUser;
 
                                 if (!isChatSynced) {
-                                    setTimeout(showFinalVerify, 300); // 聊天還沒送到，繼續等！
+                                    setTimeout(showFinalVerify, 300); 
                                     return;
                                 }
                                 
-                                // 4. 預判這句話是不是「準備要播動畫」
-                                let msgId = lastChat.id; // ✨ 使用資料庫真實 ID
+                                let msgId = lastChat.id;
                                 let willAnimate = lastChat.text.length === 4 && window.lastAnimatedMsgId !== msgId;
 
-                                // 如果正在播動畫，或者「準備要播動畫」，也繼續等！
-                                if (window.isAnimating || willAnimate) {
+                                // ✨ 新增核心修正：檢查加分跳窗 (Toast) 是否還在畫面上
+                                // 我們去檢查 toast-container 裡面還有沒有子元素
+                                const toastContainer = document.getElementById('toast-container');
+                                const isToastShowing = toastContainer && toastContainer.childElementCount > 0;
+
+                                // 💡 判斷條件：如果正在播特效、準備播特效，或是加分跳窗還沒消失，就繼續延後 0.3 秒再檢查
+                                if (window.isAnimating || willAnimate || isToastShowing) {
                                     setTimeout(showFinalVerify, 300);
                                     return;
                                 }
