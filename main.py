@@ -393,16 +393,14 @@ async def buy_hint(req: ActionRequest):
     state = get_room_state(req.room_name)
     user = req.user_name
     
-    state["scores"][user] = state.get("scores", {}).get(user, 50) - 5
-    if state["scores"][user] <= 0:
-        state["isGameOver"] = True
-    
+    # 🚨 先不要存檔！我們先把變化算好放在變數裡，等成功了再存
+    new_score = state.get("scores", {}).get(user, 50) - 5
+    is_game_over = state.get("isGameOver", False)
+    if new_score <= 0:
+        is_game_over = True
+        
     hints = state.get("roundHints", {})
-    hints[user] = hints.get(user, 0) + 1
-    state["roundHints"] = hints
-    
-    update_current_turn(state)
-    save_room_state(req.room_name, state)
+    new_hints_count = hints.get(user, 0) + 1
 
     if req.action_type == "hint_1":
         prompt = f"請給出一個以「{req.target_text[-1]}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
@@ -414,9 +412,7 @@ async def buy_hint(req: ActionRequest):
             "text": f"💡 第一次提示：下一句的第三個字可以是「**{hint_char}**」", 
             "type": "referee", "hint_answer": ans, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
         })
-        return {"status": "success"}
-    
-    # ✅ 新寫法
+        
     elif req.action_type == "hint_2":
         docs = list(db.collection(CHAT_COLLECTION)\
             .where("room_name", "==", req.room_name)\
@@ -436,9 +432,17 @@ async def buy_hint(req: ActionRequest):
                 "text": f"💡 第二次提示 (意思)：\n{res.text.strip()}", 
                 "type": "referee", "hint_answer": target_idiom, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
             })
-            return {"status": "success"}
         else:
             raise HTTPException(status_code=400, detail="找不到前一次的提示紀錄！")
+
+    # ✨ 只有當上面 AI 生成與資料庫讀取都沒報錯時，我們才真正扣分存檔！
+    state["scores"][user] = new_score
+    state["isGameOver"] = is_game_over
+    state["roundHints"][user] = new_hints_count
+    update_current_turn(state)
+    save_room_state(req.room_name, state)
+
+    return {"status": "success"}
 
 @app.post("/random_topic")
 async def random_topic(req: ActionRequest):
