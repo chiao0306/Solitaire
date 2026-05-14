@@ -492,24 +492,25 @@
                     let newState = docSnap.data();
                     const verifyDialog = document.getElementById('final-verify-dialog');
     
-                    // ✨ 更新：最終回合驗證跳窗 (加入動畫等待與動態內容)
+                    // ✨ 更新：最終回合驗證跳窗 (加入「防搶拍」動畫預判與等待)
                     if (newState.isVerifyingLastMove && !newState.isGameOver) {
                         const myVotes = newState.verificationVotes || [];
                         
                         if (!myVotes.includes(currentPlayer) && !verifyDialog.open) {
                             
-                            // 定義一個內部函式來檢查動畫與顯示跳窗
                             const showFinalVerify = () => {
-                                // 1. 抓取對話紀錄中的最後一個成語
                                 let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
                                 
-                                // 2. 如果動畫還在跑 (isAnimating)，或是對話紀錄還沒同步，就等 300ms 再檢查一次
-                                if (window.isAnimating || !lastChat) {
+                                // ✨ 新增防護：預先判斷這句話是不是「等一下馬上就要播動畫」
+                                let msgId = lastChat ? lastChat.text + (lastChat.timestamp ? lastChat.timestamp.seconds : "") : null;
+                                let willAnimate = lastChat && lastChat.text.length === 4 && window.lastAnimatedMsgId !== msgId;
+    
+                                // 如果正在播動畫，或者「準備要播動畫」，就乖乖等 300 毫秒再查一次
+                                if (window.isAnimating || willAnimate || !lastChat) {
                                     setTimeout(showFinalVerify, 300);
                                     return;
                                 }
     
-                                // 3. 動畫跑完了，更新跳窗文字內容
                                 const textContainer = document.getElementById('final-verify-text');
                                 textContainer.innerHTML = `
                                     最後一個玩家 <b>${lastChat.user_name}</b> 的成語：<br>
@@ -517,18 +518,17 @@
                                     有人要提出裁判申請嗎？
                                 `;
                                 
-                                // 4. 正式彈出跳窗
                                 if (!verifyDialog.open) verifyDialog.showModal();
                             };
                             
-                            showFinalVerify(); // 啟動檢查流程
-
-                    } else if (myVotes.includes(currentPlayer) && verifyDialog.open) {
+                            showFinalVerify();
+    
+                        } else if (myVotes.includes(currentPlayer) && verifyDialog.open) {
+                            verifyDialog.close();
+                        }
+                    } else if (verifyDialog.open) {
                         verifyDialog.close();
                     }
-                } else if (verifyDialog.open) {
-                    verifyDialog.close();
-                }
                     
                     // ✨ 確保玩家真的成功加入過才踢出，避免網路時間差誤判
                     if (newState.playersOrder && newState.playersOrder.includes(currentPlayer)) {
