@@ -178,12 +178,12 @@ async def send_chat(req: ChatRequest):
         if state.get("sosUser") == user:
             state["sosCount"] = state.get("sosCount", 0) + 1
             if state["sosCount"] >= 3:
-                state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
+                state["scores"][user] = state["scores"].get(user, 50) + (15 if isPerfectMatch else 10)
                 state["sosUser"] = None
                 state["sosCount"] = 0
                 user_finished_turn = True
         else:
-            state["scores"][user] = state["scores"].get(user, 50) + (20 if isPerfectMatch else 10)
+            state["scores"][user] = state["scores"].get(user, 50) + (15 if isPerfectMatch else 10)
             state["sosUser"] = None
             state["sosCount"] = 0
             user_finished_turn = True
@@ -322,7 +322,7 @@ async def call_referee(req: ActionRequest):
         state["rejected"] = True
         last_user = state.get("lastChatUser")
         if last_user and last_user in state.get("scores", {}):
-            penalty = 30 if state.get("lastChatWasPerfectMatch") else 20
+            penalty = 40 if state.get("lastChatWasPerfectMatch") else 30
             state["scores"][last_user] -= penalty
             if state["scores"][last_user] <= 0:
                 state["isGameOver"] = True
