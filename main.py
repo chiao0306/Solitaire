@@ -416,14 +416,17 @@ async def buy_hint(req: ActionRequest):
         })
         return {"status": "success"}
     
+    # ✅ 新寫法
     elif req.action_type == "hint_2":
-        docs = db.collection(CHAT_COLLECTION).where("room_name", "==", req.room_name).where("requested_by", "==", req.user_name).where("type", "==", "referee").stream()
-        hint_records = [d.to_dict() for d in docs if d.to_dict().get("hint_answer") and d.to_dict().get("timestamp")]
+        docs = list(db.collection(CHAT_COLLECTION)\
+            .where("room_name", "==", req.room_name)\
+            .where("requested_by", "==", req.user_name)\
+            .where("type", "==", "referee")\
+            .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+            .limit(1)\
+            .stream())
         
-        target_idiom = None
-        if hint_records:
-            hint_records.sort(key=lambda x: x.get("timestamp"))
-            target_idiom = hint_records[-1].get("hint_answer")
+        target_idiom = docs[0].to_dict().get("hint_answer") if docs else None
             
         if target_idiom:
             prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
@@ -607,17 +610,17 @@ async def get_rooms():
 @app.post("/revoke_chat")
 async def revoke_chat(req: ActionRequest):
     # ✨ 1. (在交易外) 先找出玩家最新的一筆發言紀錄，取得準備要刪除的 Document Reference
+    # ✅ 新寫法 (永遠只耗費 1 次讀取)
     docs = list(db.collection(CHAT_COLLECTION)\
         .where("room_name", "==", req.room_name)\
         .where("user_name", "==", req.user_name)\
         .where("type", "==", "chat")\
+        .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+        .limit(1)\
         .stream())
         
-    valid_docs = [d for d in docs if d.to_dict().get("timestamp") is not None]
-    doc_to_delete_ref = None
-    if valid_docs:
-        valid_docs.sort(key=lambda d: d.to_dict().get("timestamp"), reverse=True)
-        doc_to_delete_ref = db.collection(CHAT_COLLECTION).document(valid_docs[0].id)
+    if docs:
+        db.collection(CHAT_COLLECTION).document(docs[0].id).delete()
 
     # ✨ 2. 準備 Transaction 與其他的 Document References
     transaction_obj = db.transaction()
