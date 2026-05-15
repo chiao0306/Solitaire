@@ -539,14 +539,48 @@
             setTimeout(() => { overlay.style.display = 'none'; updateUI(); }, 3000);
         }
 
-        async function apiCall(endpoint, bodyData) {
+        // 修改後的 apiCall，加入 btnId 參數來控制按鈕狀態
+        async function apiCall(endpoint, bodyData, btnId = null) {
+            let btnElement = null;
+            let originalText = "";
+            
+            // 1. 如果有傳入按鈕 ID，先鎖定按鈕並顯示 Loading
+            if (btnId) {
+                btnElement = document.getElementById(btnId);
+                if (btnElement) {
+                    originalText = btnElement.innerHTML;
+                    btnElement.disabled = true;
+                    btnElement.innerHTML = "⏳ 處理中...";
+                }
+            }
+        
             try {
-                const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bodyData) });
-                if (!res.ok) { const err = await res.json(); await showModalAlert("系統提示：" + err.detail); return false; }
+                const res = await fetch(`${API_BASE}${endpoint}`, { 
+                    method: "POST", 
+                    headers: { "Content-Type": "application/json" }, 
+                    body: JSON.stringify(bodyData) 
+                });
+                
+                if (!res.ok) { 
+                    const err = await res.json(); 
+                    await showModalAlert("系統提示：" + err.detail); 
+                    return false; 
+                }
                 return true;
-            } catch(e) { await showModalAlert("連線後端失敗！"); return false; }
+            } catch(e) { 
+                await showModalAlert("連線後端失敗或網路不穩，請確認網路狀態！"); 
+                return false; 
+            } finally {
+                // 2. 無論成功或失敗，一定要把按鈕文字還原
+                if (btnElement) {
+                    btnElement.innerHTML = originalText;
+                    // 解鎖按鈕的動作交給接下來的 updateUI() 統一判定，這樣最安全
+                }
+                // 3. 強制刷新一次 UI，確保跟 Firebase 最新狀態同步
+                updateUI(); 
+            }
         }
-
+        
         document.getElementById('join-btn').addEventListener('click', async () => {
             currentRoom = document.getElementById('room-input').value.trim();
             currentPlayer = document.getElementById('player-input').value.trim();
@@ -877,12 +911,14 @@
             const text = document.getElementById('msg-input').value.trim(); if (!text) return;
             let isSosFinishing = (gameState.sosUser === currentPlayer && gameState.sosCount === 2);
             let ignoreTone = (gameState.sosUser === currentPlayer && gameState.sosCount === 0);
-            
             let validLastIdiom = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
-
-            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: validLastIdiom, ignore_tone: ignoreTone });
+        
+            // ✨ 加上 'send-btn'
+            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: validLastIdiom, ignore_tone: ignoreTone }, 'send-btn');
+            
             if (success) {
                 document.getElementById('msg-input').value = "";
+                // 系統發言不需要鎖按鈕，這裡不用傳 ID
                 if (isSosFinishing) apiCall('/system_action', { room_name: currentRoom, user_name: "System", action_type: "system", text: `【系統】🎉 恭喜 **${currentPlayer}** 完成 3 連擊逃脫成功！`, avatar: "" });
             }
         });
@@ -893,10 +929,11 @@
             
             const msg = "確定要呼叫 AI 裁判嗎？\n\n💡 功能說明：對上一句成語進行權威審查。\n【❌ 不是成語】：原發言者扣 20 分 (同字接龍扣 30 分)。\n【✅ 是成語】：原發言者獲得 5 分清白獎勵！";
             if (await showModalAlert(msg, true)) {
-                apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text });
+                // ✨ 加上 'referee-btn'
+                apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text }, 'referee-btn');
             }
         });
-
+        
         document.getElementById('hint-btn').addEventListener('click', async () => {
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
             if(!targetWord) return await showModalAlert("還沒有題目！");
@@ -906,7 +943,8 @@
             if (await showModalAlert(msg, true)) {
                 let myHints = (gameState.roundHints || {})[currentPlayer] || 0;
                 let actionType = myHints === 0 ? "hint_1" : "hint_2"; 
-                apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: targetWord });
+                // ✨ 加上 'hint-btn'
+                apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: targetWord }, 'hint-btn');
             }
         });
 
@@ -918,7 +956,8 @@
         });
 
         document.getElementById('big-random-btn').addEventListener('click', () => {
-            apiCall('/random_topic', { room_name: currentRoom, user_name: currentPlayer, action_type: "random", text: "請求出題", avatar: currentAvatar });
+            // ✨ 加上 'big-random-btn'
+            apiCall('/random_topic', { room_name: currentRoom, user_name: currentPlayer, action_type: "random", text: "請求出題", avatar: currentAvatar }, 'big-random-btn');
         });
         
         document.getElementById('surrender-btn').addEventListener('click', async () => {
