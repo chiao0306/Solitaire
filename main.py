@@ -615,16 +615,11 @@ async def get_rooms():
 
 @app.post("/revoke_chat")
 async def revoke_chat(req: ActionRequest):
-    # 1. 找出最新發言
-    docs = list(db.collection(CHAT_COLLECTION)\
-        .where("room_name", "==", req.room_name)\
-        .where("user_name", "==", req.user_name)\
-        .where("type", "==", "chat")\
-        .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-        .limit(1)\
-        .stream())
-    
-    doc_to_delete_ref = db.collection(CHAT_COLLECTION).document(docs[0].id) if docs else None
+    # ✨ 1. 直接從前端接收對話 ID (target_text)，不需再做複雜的資料庫查詢，完美避開索引錯誤！
+    if not req.target_text:
+        raise HTTPException(status_code=400, detail="找不到要收回的發言 ID！")
+        
+    doc_to_delete_ref = db.collection(CHAT_COLLECTION).document(req.target_text)
 
     transaction_obj = db.transaction()
     room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
@@ -635,12 +630,14 @@ async def revoke_chat(req: ActionRequest):
         doc_snap = room_doc_ref.get(transaction=transaction)
         state = doc_snap.to_dict() if doc_snap.exists else get_default_state()
 
+        # 防護：確認狀態是否允許收回
         if state.get("lastChatUser") != req.user_name:
             return {"error": "只能收回自己最新的發言！或者已經有人接下去了！"}
         
         if state.get("alreadyJudged"):
             return {"error": "裁判已經判決，無法收回！"}
 
+        # 計算扣分
         is_perfect_match = state.get("lastChatWasPerfectMatch", False)
         penalty = 25 if is_perfect_match else 15
 
@@ -659,6 +656,7 @@ async def revoke_chat(req: ActionRequest):
             if tracked:
                 state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
 
+        # 狀態退回
         state["rejected"] = True
         state["sosUser"] = state.get("lastChatPrevSosUser")
         state["sosCount"] = state.get("lastChatPrevSosCount")
@@ -674,12 +672,13 @@ async def revoke_chat(req: ActionRequest):
             "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
         })
         
+        # 安全刪除對話
         if del_doc_ref:
             transaction.delete(del_doc_ref)
         
         return {"success": True}
 
-    # ✨ 修正點：確保將執行結果賦值給 result
+    # ✨ 執行交易
     result = process_revoke_transaction(transaction_obj, room_ref, sys_msg_ref, doc_to_delete_ref)
     
     if isinstance(result, dict) and "error" in result:
