@@ -889,6 +889,7 @@
                         // ✨ 這裡的 setTimeout 已刪除，移交給 triggerFlashyEffect 統一管理
                     }
                 }
+            }); 
 
             // ✨ 將設定好的 max_rounds 傳給後端
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar, max_rounds: applyMaxRounds });
