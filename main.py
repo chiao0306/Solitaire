@@ -623,7 +623,6 @@ async def get_rooms():
 @app.post("/revoke_chat")
 async def revoke_chat(req: ActionRequest):
     # ✨ 1. (在交易外) 先找出玩家最新的一筆發言紀錄，取得準備要刪除的 Document Reference
-    # ✅ 新寫法 (永遠只耗費 1 次讀取)
     docs = list(db.collection(CHAT_COLLECTION)\
         .where("room_name", "==", req.room_name)\
         .where("user_name", "==", req.user_name)\
@@ -632,8 +631,10 @@ async def revoke_chat(req: ActionRequest):
         .limit(1)\
         .stream())
         
+    # 💡 修正：先定義好變數，只取 Reference，不要在這裡直接刪除！
+    doc_to_delete_ref = None
     if docs:
-        db.collection(CHAT_COLLECTION).document(docs[0].id).delete()
+        doc_to_delete_ref = db.collection(CHAT_COLLECTION).document(docs[0].id)
 
     # ✨ 2. 準備 Transaction 與其他的 Document References
     transaction_obj = db.transaction()
@@ -648,11 +649,12 @@ async def revoke_chat(req: ActionRequest):
 
         # 防護 1：確認現在最新發言的還是不是這個人（防剛好有人接下去的極限時間差）
         if state.get("lastChatUser") != req.user_name:
-            raise HTTPException(status_code=400, detail="只能收回自己最新的發言！或者已經有人接下去了！")
+            # 回傳明確的錯誤訊息給前端
+            return {"error": "只能收回自己最新的發言！或者已經有人接下去了！"}
         
         # 防護 2：確認裁判還沒判決
         if state.get("alreadyJudged"):
-            raise HTTPException(status_code=400, detail="裁判已經判決，無法收回！")
+            return {"error": "裁判已經判決，無法收回！"}
 
         is_perfect_match = state.get("lastChatWasPerfectMatch", False)
         penalty = 25 if is_perfect_match else 15
@@ -686,11 +688,17 @@ async def revoke_chat(req: ActionRequest):
             "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
         })
         
-        # 如果有找到那筆要刪除的紀錄，就在交易裡把它刪掉
+        # 💡 修正：統一在這裡 (交易內) 進行安全刪除
         if del_doc_ref:
             transaction.delete(del_doc_ref)
 
+        return {"success": True}
+
     # ✨ 5. 觸發執行
-    process_revoke_transaction(transaction_obj, room_ref, sys_msg_ref, doc_to_delete_ref)
+    result = process_revoke_transaction(transaction_obj, room_ref, sys_msg_ref, doc_to_delete_ref)
+    
+    # 捕捉並拋出防呆錯誤給前端
+    if result and "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
 
     return {"status": "success"}
