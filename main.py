@@ -446,7 +446,7 @@ async def buy_hint(req: ActionRequest):
 
 @app.post("/random_topic")
 async def random_topic(req: ActionRequest):
-    prompt = "請給出一個常見的繁體中文四字成語，只需回傳成語本身。"
+    prompt = "請給出一個隨機的繁體中文四字成語，只需回傳成語本身。"
     res = model.generate_content(prompt, safety_settings=custom_safety_settings)
     
     if res and res.text:
