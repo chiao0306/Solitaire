@@ -483,7 +483,21 @@
             }
 
             let hasChat = chatHistory.some(m => m.type === 'chat');
-            refBtn.disabled = (gameState.alreadyJudged || !hasChat || gameState.isGameOver);
+            
+            // ✨ 修改這裡：只要「已經判過」或「正在判定中」，所有人都要鎖定按鈕
+            refBtn.disabled = (
+                gameState.alreadyJudged || 
+                gameState.isRefereeProcessing || 
+                !hasChat || 
+                gameState.isGameOver
+            );
+            
+            // ✨ 優化體驗：如果是正在判定中，改變文字提醒大家
+            if (gameState.isRefereeProcessing) {
+                refBtn.innerHTML = "⏳ 裁判審理中...";
+            } else {
+                refBtn.innerHTML = "⚖️ 裁判";
+            }
 
             let sosString = ""; let remainingSos = 0;
             if (gameState.sosUser) { 
