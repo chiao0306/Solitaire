@@ -324,77 +324,75 @@ async def system_action(req: ActionRequest):
 
 @app.post("/call_referee")
 async def call_referee(req: ActionRequest):
-    prompt = f"請判斷「{req.target_text}」以在台灣教育部最具權威的《成語典》或《重編國語辭典修訂本》判斷是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
-    res = model.generate_content(prompt, safety_settings=custom_safety_settings)
-    result_text = res.text.strip()
-    
-    state = get_room_state(req.room_name)
-    state["alreadyJudged"] = True
-    
-    if '❌' in result_text:
-        state["rejected"] = True
-        last_user = state.get("lastChatUser")
-        if last_user and last_user in state.get("scores", {}):
-            penalty = 40 if state.get("lastChatWasPerfectMatch") else 30
-            
-            # ✨ 整合 1：求生連擊判錯，前兩擊只小扣 5 分
-            prev_sos_user = state.get("lastChatPrevSosUser")
-            prev_sos_count = state.get("lastChatPrevSosCount", 0)
-            
-            if last_user == prev_sos_user and prev_sos_count < 2:
-                penalty = 5  
-                
-            state["scores"][last_user] -= penalty
-            if state["scores"][last_user] <= 0:
-                state["isGameOver"] = True
-                
-        state["sosUser"] = state.get("lastChatPrevSosUser")
-        state["sosCount"] = state.get("lastChatPrevSosCount")
-        
-        if last_user and last_user in state.get("trackedPlayers", []):
-            state["playerRounds"] = state.get("playerRounds", {})
-            state["playerRounds"][last_user] = max(0, state["playerRounds"].get(last_user, 0) - 1)
-            tracked = state["trackedPlayers"]
-            if tracked:
-                state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
-        
-        if state.get("isVerifyingLastMove"):
-            state["isVerifyingLastMove"] = False 
-            
-    elif '✅' in result_text:
-        last_user = state.get("lastChatUser")
-        if last_user and last_user in state.get("scores", {}):
-            
-            # ✨ 整合 2：求生連擊判對，前兩擊不給 5 分清白獎勵
-            prev_sos_user = state.get("lastChatPrevSosUser")
-            prev_sos_count = state.get("lastChatPrevSosCount", 0)
-            
-            # 只有在「不是」求生連擊前兩擊的情況下，才加 5 分
-            if not (last_user == prev_sos_user and prev_sos_count < 2):
-                state["scores"][last_user] += 5
-            
-        if state.get("isVerifyingLastMove"):
-            state["isVerifyingLastMove"] = False
-            state["isGameOver"] = True
+    # ✨ 1. 使用 Transaction 先搶佔「裁判鎖」，防止多人同時觸發
+    transaction_obj = db.transaction()
+    room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
 
-    # 容錯機制：如果 AI 發神經，沒有給出明確的符號
-    else:
-        state["alreadyJudged"] = False 
+    @firestore.transactional
+    def lock_referee_transaction(transaction, doc_ref):
+        snapshot = doc_ref.get(transaction=transaction)
+        curr_state = snapshot.to_dict() if snapshot.exists else get_default_state()
+        
+        # 如果已經在判定中或已經判定過，直接報錯
+        if curr_state.get("isRefereeProcessing") or curr_state.get("alreadyJudged"):
+            return {"error": "裁判正在審理中或已經判決過囉！"}
+        
+        # 沒人搶，那就我來！設定判定中標記
+        transaction.update(doc_ref, {"isRefereeProcessing": True})
+        return {"success": True, "state": curr_state}
+
+    # 執行搶鎖動作
+    lock_res = lock_referee_transaction(transaction_obj, room_ref)
+    if "error" in lock_res:
+        raise HTTPException(status_code=403, detail=lock_res["error"])
+    
+    # 拿到鎖了，開始呼叫 AI
+    try:
+        prompt = f"請判斷「{req.target_text}」是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
+        res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+        result_text = res.text.strip()
+        
+        # 讀取剛才鎖定時拿到的狀態
+        state = lock_res["state"]
+        state["alreadyJudged"] = True
+        state["isRefereeProcessing"] = False # ✨ 判定完成，解鎖
+        
+        # --- 下面維持原本的判定邏輯 (加減分、更新回合等) ---
+        if '❌' in result_text:
+            state["rejected"] = True
+            last_user = state.get("lastChatUser")
+            if last_user and last_user in state.get("scores", {}):
+                penalty = 40 if state.get("lastChatWasPerfectMatch") else 30
+                prev_sos_user = state.get("lastChatPrevSosUser")
+                prev_sos_count = state.get("lastChatPrevSosCount", 0)
+                if last_user == prev_sos_user and prev_sos_count < 2:
+                    penalty = 5  
+                state["scores"][last_user] -= penalty
+                if state["scores"][last_user] <= 0:
+                    state["isGameOver"] = True
+            state["sosUser"] = state.get("lastChatPrevSosUser")
+            state["sosCount"] = state.get("lastChatPrevSosCount")
+        elif '✅' in result_text:
+            last_user = state.get("lastChatUser")
+            if last_user and last_user in state.get("scores", {}):
+                prev_sos_user = state.get("lastChatPrevSosUser")
+                prev_sos_count = state.get("lastChatPrevSosCount", 0)
+                if not (last_user == prev_sos_user and prev_sos_count < 2):
+                    state["scores"][last_user] += 5
+        
+        # 存回狀態並發布訊息
+        update_current_turn(state)
+        save_room_state(req.room_name, state)
         db.collection(CHAT_COLLECTION).add({
-            "room_name": req.room_name, "user_name": "Referee (AI)", 
-            "text": f"⚠️ 裁判陷入了深思，沒有給出明確的 ✅ 或 ❌，請再試一次！\n(AI 回覆原文：{result_text})", 
+            "room_name": req.room_name, "user_name": "Referee (AI)", "text": result_text, 
             "type": "referee", "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
         })
-        save_room_state(req.room_name, state)
-        return {"status": "success"}
-            
-    update_current_turn(state)
-    save_room_state(req.room_name, state)
+        
+    except Exception as e:
+        # 如果 AI 報錯，也要記得解鎖，否則房間會永遠不能呼叫裁判
+        db.collection(STATE_COLLECTION).document(req.room_name).update({"isRefereeProcessing": False})
+        raise HTTPException(status_code=500, detail="AI 裁判暫時罷工，請重試！")
 
-    db.collection(CHAT_COLLECTION).add({
-        "room_name": req.room_name, "user_name": "Referee (AI)", "text": result_text, 
-        "type": "referee", "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
-    })
     return {"status": "success"}
 
 @app.post("/buy_hint")
