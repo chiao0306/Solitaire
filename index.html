@@ -918,9 +918,11 @@
                         window.isAnimating = true;
                         triggerFlashyEffect(lastChat.user_name, lastChat.text);
                         window.lastAnimatedMsgId = msgId;
-                        // ✨ 這裡的 setTimeout 已刪除，移交給 triggerFlashyEffect 統一管理
                     }
                 }
+
+                // ✨ 就是這裡！在監聽器的最底部補上這一行
+                updateUI(); 
             }); 
 
             // ✨ 將設定好的 max_rounds 傳給後端
