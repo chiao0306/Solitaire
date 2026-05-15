@@ -520,16 +520,16 @@ async def admin_action(req: AdminRequest):
     if req.admin_pwd != ADMIN_PASSWORD and not is_self_delete:
         raise HTTPException(status_code=403, detail="權限不足！")
     
-    # ✨ 1. 準備 Transaction 與 Document References
+    # 準備 Transaction 與 Document References
     transaction_obj = db.transaction()
     room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
     meta_ref = db.collection("system_meta").document("active_rooms")
-    sys_msg_ref = db.collection(CHAT_COLLECTION).document() # 預先生成系統訊息 ID
+    sys_msg_ref = db.collection(CHAT_COLLECTION).document() 
     
     if req.action_type == "delete_user" and req.target_user:
         target = req.target_user
 
-        # ✨ 2. 定義刪除玩家的 Transaction
+        # 定義刪除玩家的 Transaction
         @firestore.transactional
         def process_delete_user_transaction(transaction, room_doc_ref, meta_doc_ref, sys_doc_ref):
             doc = room_doc_ref.get(transaction=transaction)
@@ -581,19 +581,32 @@ async def admin_action(req: AdminRequest):
                 
             return is_empty_room # 將結果傳到交易外部
 
-        # ✨ 3. 執行交易
+        # 執行交易
         is_empty = process_delete_user_transaction(transaction_obj, room_ref, meta_ref, sys_msg_ref)
         
-        # ✨ 4. 交易結束後，如果判斷房間已空，在交易外執行大量刪除動作
+        # ✨ 交易結束後，處理歷史訊息的清理
         if is_empty:
+            # 如果房間空了，直接整間刪掉
             delete_messages_safe(req.room_name)
             room_ref.delete()
+        else:
+            # ✨ 新增防護機制：如果房間沒空，去找這個人的「加入房間」訊息並刪除
+            # (因為這裡只有 where 篩選，沒有 order_by 排序，所以不會觸發索引 Bug，非常安全！)
+            try:
+                join_docs = db.collection(CHAT_COLLECTION)\
+                    .where("room_name", "==", req.room_name)\
+                    .where("user_name", "==", target)\
+                    .where("type", "==", "join_room")\
+                    .stream()
+                for d in join_docs:
+                    d.reference.delete()
+            except Exception as e:
+                print(f"清理加入訊息時發生錯誤: {e}")
             
     elif req.action_type == "clear_room":
-        # 毀滅式清空房間 (不需要防搶拍，直接執行即可)
+        # 毀滅式清空房間
         delete_messages_safe(req.room_name)
         
-        # 確保大廳名單安全刪除
         @firestore.transactional
         def process_clear_meta(transaction, meta_doc_ref):
             meta_doc = meta_doc_ref.get(transaction=transaction)
