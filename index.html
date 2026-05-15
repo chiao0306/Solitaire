@@ -440,6 +440,10 @@
         });
         
         function updateUI() {
+            
+            // ✨ 新增這行：如果正在播放動畫，絕對不要去動 UI 的狀態，等動畫播完它自己會呼叫一次 updateUI()
+            if (window.isAnimating) return; 
+            
             const turnInfo = document.getElementById('turn-info'); 
             const msgInput = document.getElementById('msg-input');
             const sendBtn = document.getElementById('send-btn'); 
