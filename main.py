@@ -324,7 +324,6 @@ async def system_action(req: ActionRequest):
 
 @app.post("/call_referee")
 async def call_referee(req: ActionRequest):
-    # ✨ 1. 使用 Transaction 先搶佔「裁判鎖」，防止多人同時觸發
     transaction_obj = db.transaction()
     room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
 
@@ -333,31 +332,27 @@ async def call_referee(req: ActionRequest):
         snapshot = doc_ref.get(transaction=transaction)
         curr_state = snapshot.to_dict() if snapshot.exists else get_default_state()
         
-        # 如果已經在判定中或已經判定過，直接報錯
         if curr_state.get("isRefereeProcessing") or curr_state.get("alreadyJudged"):
             return {"error": "裁判正在審理中或已經判決過囉！"}
         
-        # 沒人搶，那就我來！設定判定中標記
+        # 鎖定狀態
         transaction.update(doc_ref, {"isRefereeProcessing": True})
         return {"success": True, "state": curr_state}
 
-    # 執行搶鎖動作
+    # 執行鎖定交易
     lock_res = lock_referee_transaction(transaction_obj, room_ref)
-    if "error" in lock_res:
+    if isinstance(lock_res, dict) and "error" in lock_res:
         raise HTTPException(status_code=403, detail=lock_res["error"])
     
-    # 拿到鎖了，開始呼叫 AI
     try:
         prompt = f"請判斷「{req.target_text}」是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
         res = model.generate_content(prompt, safety_settings=custom_safety_settings)
-        result_text = res.text.strip()
+        result_text = res.text.strip() if res and res.text else "⚠️ 裁判暫時無法回應"
         
-        # 讀取剛才鎖定時拿到的狀態
         state = lock_res["state"]
         state["alreadyJudged"] = True
-        state["isRefereeProcessing"] = False # ✨ 判定完成，解鎖
+        state["isRefereeProcessing"] = False 
         
-        # --- 下面維持原本的判定邏輯 (加減分、更新回合等) ---
         if '❌' in result_text:
             state["rejected"] = True
             last_user = state.get("lastChatUser")
@@ -389,9 +384,9 @@ async def call_referee(req: ActionRequest):
         })
         
     except Exception as e:
-        # 如果 AI 報錯，也要記得解鎖，否則房間會永遠不能呼叫裁判
+        # 發生錯誤時務必解鎖，否則房間會卡死
         db.collection(STATE_COLLECTION).document(req.room_name).update({"isRefereeProcessing": False})
-        raise HTTPException(status_code=500, detail="AI 裁判暫時罷工，請重試！")
+        raise HTTPException(status_code=500, detail=f"AI 裁判出錯：{str(e)}")
 
     return {"status": "success"}
 
@@ -620,7 +615,7 @@ async def get_rooms():
 
 @app.post("/revoke_chat")
 async def revoke_chat(req: ActionRequest):
-    # ✨ 1. (在交易外) 先找出玩家最新的一筆發言紀錄，取得準備要刪除的 Document Reference
+    # 1. 找出最新發言
     docs = list(db.collection(CHAT_COLLECTION)\
         .where("room_name", "==", req.room_name)\
         .where("user_name", "==", req.user_name)\
@@ -628,41 +623,34 @@ async def revoke_chat(req: ActionRequest):
         .order_by("timestamp", direction=firestore.Query.DESCENDING)\
         .limit(1)\
         .stream())
-        
-    # 💡 修正：先定義好變數，只取 Reference，不要在這裡直接刪除！
-    doc_to_delete_ref = None
-    if docs:
-        doc_to_delete_ref = db.collection(CHAT_COLLECTION).document(docs[0].id)
+    
+    doc_to_delete_ref = db.collection(CHAT_COLLECTION).document(docs[0].id) if docs else None
 
-    # ✨ 2. 準備 Transaction 與其他的 Document References
     transaction_obj = db.transaction()
     room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
-    sys_msg_ref = db.collection(CHAT_COLLECTION).document() # 預先生成系統訊息 ID
+    sys_msg_ref = db.collection(CHAT_COLLECTION).document()
 
-    # ✨ 3. 定義 Transaction 內容
     @firestore.transactional
     def process_revoke_transaction(transaction, room_doc_ref, sys_doc_ref, del_doc_ref):
-        doc = room_doc_ref.get(transaction=transaction)
-        state = doc.to_dict() if doc.exists else get_default_state()
+        doc_snap = room_doc_ref.get(transaction=transaction)
+        state = doc_snap.to_dict() if doc_snap.exists else get_default_state()
 
-        # 防護 1：確認現在最新發言的還是不是這個人（防剛好有人接下去的極限時間差）
         if state.get("lastChatUser") != req.user_name:
-            # 回傳明確的錯誤訊息給前端
             return {"error": "只能收回自己最新的發言！或者已經有人接下去了！"}
         
-        # 防護 2：確認裁判還沒判決
         if state.get("alreadyJudged"):
             return {"error": "裁判已經判決，無法收回！"}
 
         is_perfect_match = state.get("lastChatWasPerfectMatch", False)
         penalty = 25 if is_perfect_match else 15
 
-        # 扣分處理
-        state["scores"][req.user_name] = state["scores"].get(req.user_name, 50) - penalty
+        # 更新分數
+        current_score = state.get("scores", {}).get(req.user_name, 50)
+        state["scores"][req.user_name] = current_score - penalty
         if state["scores"][req.user_name] <= 0:
             state["isGameOver"] = True
 
-        # 回合制：收回發言，個人計數器 -1
+        # 回合補正
         user = req.user_name
         if user in state.get("trackedPlayers", []):
             state["playerRounds"] = state.get("playerRounds", {})
@@ -678,25 +666,23 @@ async def revoke_chat(req: ActionRequest):
         update_current_turn(state)
         state["updated_at"] = firestore.SERVER_TIMESTAMP
 
-        # ✨ 4. 將狀態寫入、加入系統提示、並刪除那筆發言
+        # 寫入狀態與系統訊息
         transaction.set(room_doc_ref, state)
         transaction.set(sys_doc_ref, {
             "room_name": req.room_name, "user_name": "System", 
-            "text": f"【系統】**{req.user_name}** 覺得不妥，收回了發言！扣除 {penalty} 分 (原地 -5 分)", 
+            "text": f"【系統】**{req.user_name}** 收回了發言！扣除 {penalty} 分", 
             "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
         })
         
-        # 💡 修正：統一在這裡 (交易內) 進行安全刪除
         if del_doc_ref:
             transaction.delete(del_doc_ref)
-
+        
         return {"success": True}
 
-    # ✨ 5. 觸發執行
+    # ✨ 修正點：確保將執行結果賦值給 result
     result = process_revoke_transaction(transaction_obj, room_ref, sys_msg_ref, doc_to_delete_ref)
     
-    # 捕捉並拋出防呆錯誤給前端
-    if result and "error" in result:
+    if isinstance(result, dict) and "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
 
     return {"status": "success"}
