@@ -1033,13 +1033,19 @@
                     const msg = `確定要收回「${lastChat.text}」嗎？\n\n💡 收回代價：\n您剛才是${isPerfectMatch ? '同字' : '同音'}接龍，\n收回將扣除 ${penalty} 分 (等同這回合原地扣 5 分)！`;
 
                     if (await showModalAlert(msg, true)) {
-                        apiCall('/revoke_chat', { room_name: currentRoom, user_name: currentPlayer, action_type: "revoke", text: "收回發言", avatar: currentAvatar });
+                        // ✨ 修改這裡：把 lastChat.id 當作 target_text 傳給後端！
+                        apiCall('/revoke_chat', { 
+                            room_name: currentRoom, 
+                            user_name: currentPlayer, 
+                            action_type: "revoke", 
+                            text: "收回發言", 
+                            avatar: currentAvatar,
+                            target_text: lastChat.id  // 👈 新增這一行
+                        });
                     }
                 } else {
                     showToast("⚠️ 只能收回自己最新且還沒被接下去的發言喔！", "warning");
                 }
-            }
-        });
         
         document.getElementById('btn-leave-room').addEventListener('click', async () => {
             const msg = "🏃 確定要刪除角色並退出嗎？\n\n注意：您的分數將被永久清除。";
