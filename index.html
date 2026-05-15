@@ -440,9 +440,7 @@
         });
         
         function updateUI() {
-            
-            // ✨ 新增這行：如果正在播放動畫，絕對不要去動 UI 的狀態，等動畫播完它自己會呼叫一次 updateUI()
-            if (window.isAnimating) return; 
+            if (window.isAnimating) return; // ✨ 新增：如果正在播放動畫，暫停 UI 更新，避免死鎖
             
             const turnInfo = document.getElementById('turn-info'); 
             const msgInput = document.getElementById('msg-input');
@@ -540,15 +538,20 @@
 
             const input = document.getElementById('msg-input'); const btn = document.getElementById('send-btn');
             input.disabled = true; btn.disabled = true;
-            setTimeout(() => { overlay.style.display = 'none'; updateUI(); }, 3000);
+            
+            // ✨ 修改這裡：統一時間與解鎖順序
+            setTimeout(() => { 
+                overlay.style.display = 'none'; 
+                window.isAnimating = false; // 解除動畫鎖定
+                updateUI(); // 自動刷新畫面與按鈕狀態
+            }, 3200);
         }
 
-        // 修改後的 apiCall，加入 btnId 參數來控制按鈕狀態
+        // ✨ 修改這裡：加入 btnId 與 disabled/enabled 機制
         async function apiCall(endpoint, bodyData, btnId = null) {
             let btnElement = null;
             let originalText = "";
             
-            // 1. 如果有傳入按鈕 ID，先鎖定按鈕並顯示 Loading
             if (btnId) {
                 btnElement = document.getElementById(btnId);
                 if (btnElement) {
@@ -557,31 +560,20 @@
                     btnElement.innerHTML = "⏳ 處理中...";
                 }
             }
-        
+
             try {
-                const res = await fetch(`${API_BASE}${endpoint}`, { 
-                    method: "POST", 
-                    headers: { "Content-Type": "application/json" }, 
-                    body: JSON.stringify(bodyData) 
-                });
-                
-                if (!res.ok) { 
-                    const err = await res.json(); 
-                    await showModalAlert("系統提示：" + err.detail); 
-                    return false; 
-                }
+                const res = await fetch(`${API_BASE}${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(bodyData) });
+                if (!res.ok) { const err = await res.json(); await showModalAlert("系統提示：" + err.detail); return false; }
                 return true;
             } catch(e) { 
-                await showModalAlert("連線後端失敗或網路不穩，請確認網路狀態！"); 
+                await showModalAlert("連線後端失敗！"); 
                 return false; 
             } finally {
-                // 2. 無論成功或失敗，一定要把按鈕文字還原
                 if (btnElement) {
                     btnElement.innerHTML = originalText;
-                    // 解鎖按鈕的動作交給接下來的 updateUI() 統一判定，這樣最安全
+                    btnElement.disabled = false; // 強制解鎖按鈕
                 }
-                // 3. 強制刷新一次 UI，確保跟 Firebase 最新狀態同步
-                updateUI(); 
+                updateUI(); // 強制刷新最新狀態
             }
         }
         
@@ -886,8 +878,6 @@
                 chatBox.scrollTop = chatBox.scrollHeight;
                 
                 // 4. 修正動畫觸發邏輯：
-                // 不要只抓最後一筆訊息，而是「往回找」最新的一筆玩家發言 (type === "chat")
-                // 這樣就算最後一筆是系統倒數提醒，動畫也能正常播放
                 let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
                 
                 if (lastChat && lastChat.text.length === 4) {
@@ -896,12 +886,9 @@
                         window.isAnimating = true;
                         triggerFlashyEffect(lastChat.user_name, lastChat.text);
                         window.lastAnimatedMsgId = msgId;
-                        
-                        // 動畫播放時間約 3 秒，結束後解除鎖定
-                        setTimeout(() => { window.isAnimating = false; }, 3200);
+                        // ✨ 這裡的 setTimeout 已刪除，移交給 triggerFlashyEffect 統一管理
                     }
                 }
-            });
 
             // ✨ 將設定好的 max_rounds 傳給後端
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar, max_rounds: applyMaxRounds });
@@ -915,14 +902,12 @@
             const text = document.getElementById('msg-input').value.trim(); if (!text) return;
             let isSosFinishing = (gameState.sosUser === currentPlayer && gameState.sosCount === 2);
             let ignoreTone = (gameState.sosUser === currentPlayer && gameState.sosCount === 0);
-            let validLastIdiom = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
-        
-            // ✨ 加上 'send-btn'
-            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: validLastIdiom, ignore_tone: ignoreTone }, 'send-btn');
             
+            let validLastIdiom = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
+
+            let success = await apiCall('/send_chat', { room_name: currentRoom, user_name: currentPlayer, text, avatar: currentAvatar, last_idiom: validLastIdiom, ignore_tone: ignoreTone }, 'send-btn');
             if (success) {
                 document.getElementById('msg-input').value = "";
-                // 系統發言不需要鎖按鈕，這裡不用傳 ID
                 if (isSosFinishing) apiCall('/system_action', { room_name: currentRoom, user_name: "System", action_type: "system", text: `【系統】🎉 恭喜 **${currentPlayer}** 完成 3 連擊逃脫成功！`, avatar: "" });
             }
         });
@@ -933,11 +918,10 @@
             
             const msg = "確定要呼叫 AI 裁判嗎？\n\n💡 功能說明：對上一句成語進行權威審查。\n【❌ 不是成語】：原發言者扣 20 分 (同字接龍扣 30 分)。\n【✅ 是成語】：原發言者獲得 5 分清白獎勵！";
             if (await showModalAlert(msg, true)) {
-                // ✨ 加上 'referee-btn'
                 apiCall('/call_referee', { room_name: currentRoom, user_name: currentPlayer, action_type: "call", text: "呼叫裁判", avatar: currentAvatar, target_text: lastChat.text }, 'referee-btn');
             }
         });
-        
+
         document.getElementById('hint-btn').addEventListener('click', async () => {
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
             if(!targetWord) return await showModalAlert("還沒有題目！");
@@ -947,7 +931,6 @@
             if (await showModalAlert(msg, true)) {
                 let myHints = (gameState.roundHints || {})[currentPlayer] || 0;
                 let actionType = myHints === 0 ? "hint_1" : "hint_2"; 
-                // ✨ 加上 'hint-btn'
                 apiCall('/buy_hint', { room_name: currentRoom, user_name: currentPlayer, action_type: actionType, text: "買提示", avatar: currentAvatar, target_text: targetWord }, 'hint-btn');
             }
         });
@@ -955,18 +938,17 @@
         document.getElementById('sos-btn').addEventListener('click', async () => {
             const msg = "確定要發動「換聲調求生」嗎？\n\n💡 功能說明：發動後進入 3 連擊模式。第一擊可無視聲調接龍（例如：ㄒㄧˊ 可接 ㄒㄧ），順利完成 3 連擊後可獲得額外積分並成功逃脫！";
             if (await showModalAlert(msg, true)) {
-                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar });
+                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "sos_start", text: "發動了「換聲調求生」！", avatar: currentAvatar }, 'sos-btn');
             }
         });
 
         document.getElementById('big-random-btn').addEventListener('click', () => {
-            // ✨ 加上 'big-random-btn'
             apiCall('/random_topic', { room_name: currentRoom, user_name: currentPlayer, action_type: "random", text: "請求出題", avatar: currentAvatar }, 'big-random-btn');
         });
         
         document.getElementById('surrender-btn').addEventListener('click', async () => {
             if(await showModalAlert("確定要投降並結束這場遊戲嗎？", true)) {
-                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "", avatar: currentAvatar });
+                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "", avatar: currentAvatar }, 'surrender-btn');
             }
         });
 
