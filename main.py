@@ -239,30 +239,39 @@ async def send_chat(req: ChatRequest):
 
 @app.post("/system_action")
 async def system_action(req: ActionRequest):
-    # ✨ 1. 準備 Transaction 與 Document References
     transaction_obj = db.transaction()
     room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
-    chat_ref = db.collection(CHAT_COLLECTION).document()  # 預先生成聊天對話的 ID
-    meta_ref = db.collection("system_meta").document("active_rooms")  # 大廳房間名單
+    chat_ref = db.collection(CHAT_COLLECTION).document()  
+    meta_ref = db.collection("system_meta").document("active_rooms")  
 
-    # ✨ 2. 定義 Transaction 內容
     @firestore.transactional
     def process_system_transaction(transaction, room_doc_ref, chat_doc_ref, meta_doc_ref):
+        # 💡 先讀取大廳名單，準備檢查房間數
+        meta_doc = meta_doc_ref.get(transaction=transaction)
+        meta_data = meta_doc.to_dict() if meta_doc.exists else {}
+
         doc = room_doc_ref.get(transaction=transaction)
         state = doc.to_dict() if doc.exists else get_default_state()
         changed = False
 
         if req.action_type == "join_room":
-            # 剛開房時設定最大回合數
-            if not state.get("playersOrder"): 
-                state["maxRounds"] = req.max_rounds
+            # ✨ 後端防護 1：檢查房間數量
+            if req.room_name not in meta_data and len(meta_data.keys()) >= 10:
+                return {"error": "系統目前已達 10 個房間的上限，請加入現有房間或稍後再試！"}
 
             if req.user_name not in state.get("playersOrder", []):
+                # ✨ 後端防護 2：檢查房間內人數
+                if len(state.get("playersOrder", [])) >= 10:
+                    return {"error": "此房間已滿 10 人，無法加入！"}
+
+                # 如果都通過了，才開始初始化與加人
+                if not state.get("playersOrder"): 
+                    state["maxRounds"] = req.max_rounds
+
                 state["playersOrder"].append(req.user_name)
                 state["scores"][req.user_name] = 50
                 changed = True
             
-            # 將大廳的人員名單更新也包在交易裡執行
             transaction.set(meta_doc_ref, {
                 req.room_name: { req.user_name: req.avatar }
             }, merge=True)
@@ -284,32 +293,32 @@ async def system_action(req: ActionRequest):
                     votes.append(req.user_name)
                     state["verificationVotes"] = votes
                 
-                # 檢查是否所有房間內的人都投了「不用」
                 active_players = state.get("playersOrder", [])
                 if len(votes) >= len(active_players):
                     state["isVerifyingLastMove"] = False
-                    state["isGameOver"] = True # 全票通過，正式結算！
+                    state["isGameOver"] = True
             changed = True
 
-        # 更新狀態並準備寫入
         if changed:
             update_current_turn(state)
             state["updated_at"] = firestore.SERVER_TIMESTAMP
             transaction.set(room_doc_ref, state)
 
-        # 處理要顯示的對話框文字
         display_text = req.text
         if req.action_type == "game_over":
             display_text = f"【系統】{req.user_name} 投降了 🏳️"
 
-        # 將系統對話紀錄一併寫入
         transaction.set(chat_doc_ref, {
             "room_name": req.room_name, "user_name": req.user_name, "text": display_text, 
             "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
         })
+        return {"success": True}
 
-    # ✨ 3. 觸發執行
-    process_system_transaction(transaction_obj, room_ref, chat_ref, meta_ref)
+    # 💡 執行交易並檢查有沒有錯誤回傳
+    result = process_system_transaction(transaction_obj, room_ref, chat_ref, meta_ref)
+    if result and "error" in result:
+        # 如果有錯誤，丟回給前端顯示 (剛好會被我們前面的 apiCall 攔截並秀出 showModalAlert)
+        raise HTTPException(status_code=400, detail=result["error"])
     
     return {"status": "success"}
 
