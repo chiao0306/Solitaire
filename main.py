@@ -405,13 +405,31 @@ async def buy_hint(req: ActionRequest):
     new_hints_count = hints.get(user, 0) + 1
 
     if req.action_type == "hint_1":
-        prompt = f"請給出一個以「{req.target_text[-1]}」開頭（或同音）的常見繁體中文四字成語。只需回傳該成語本身，不要標點。"
+        target_char = req.target_text[-1]
+        
+        # ✨ 升級 1：在後端先查好這個字的「注音」
+        try:
+            char_bopomofo = pinyin(target_char, style=Style.BOPOMOFO)[0][0]
+        except:
+            char_bopomofo = ""
+
+        # ✨ 升級 2：把注音塞進 Prompt 裡，嚴厲警告 AI 不准亂給
+        prompt = (
+            f"你現在是嚴格的成語接龍小幫手。玩家上一個詞的結尾字是「{target_char}」"
+            f"{f'（注音：{char_bopomofo}）' if char_bopomofo else ''}。\n"
+            f"請提供「一個」合法的繁體中文四字成語，該成語的「第一個字」必須與「{target_char}」讀音完全相同（含聲調）或同字。\n"
+            f"只需回傳該成語本身（四個字），絕對不要輸出任何標點符號或額外解釋。"
+        )
+        
         res = model.generate_content(prompt, safety_settings=custom_safety_settings)
         ans = res.text.strip()[:4]
-        hint_char = ans[2] if len(ans) >= 3 else ans[-1]
+        
+        # ✨ 升級 3：抓取「第二個字」作為有用的提示
+        hint_char = ans[1] if len(ans) >= 2 else ans[-1]
+        
         db.collection(CHAT_COLLECTION).add({
             "room_name": req.room_name, "user_name": "Referee (AI)", 
-            "text": f"💡 第一次提示：下一句的第三個字可以是「**{hint_char}**」", 
+            "text": f"💡 第一次提示：下一句的第二個字可以是「**{hint_char}**」", 
             "type": "referee", "hint_answer": ans, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
         })
         
