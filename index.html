@@ -584,11 +584,29 @@
             if (!currentRoom || !currentPlayer) return await showModalAlert("⚠️ 請填寫房間名稱與名字！");
 
             let isExistingRoom = !!globalRoomData[currentRoom];
-            let roomData = globalRoomData[currentRoom]; let isNameTaken = false;
+            let roomData = globalRoomData[currentRoom]; 
+            let isNameTaken = false;
+            let playerCount = 0; // ✨ 新增：計算目前房間人數
             
             if (roomData) {
-                if (Array.isArray(roomData)) isNameTaken = roomData.includes(currentPlayer);
-                else isNameTaken = Object.keys(roomData).includes(currentPlayer);
+                if (Array.isArray(roomData)) {
+                    isNameTaken = roomData.includes(currentPlayer);
+                    playerCount = roomData.length;
+                } else {
+                    isNameTaken = Object.keys(roomData).includes(currentPlayer);
+                    playerCount = Object.keys(roomData).length;
+                }
+            }
+
+            // ✨ 前端防護 1：檢查總房間數量上限 (10間)
+            if (!isExistingRoom && Object.keys(globalRoomData).length >= 10) {
+                return await showModalAlert("⚠️ 系統目前已達 10 個房間的上限，為了品質請加入現存房間！");
+            }
+
+            // ✨ 前端防護 2：檢查單一房間人數上限 (10人)
+            // 如果是現存房間，且名字沒重複 (代表是新玩家要擠進來)
+            if (isExistingRoom && !isNameTaken && playerCount >= 10) {
+                return await showModalAlert("⚠️ 這個房間已經滿 10 個人了，擠不下了！請換其他房間。");
             }
 
             if (isNameTaken) {
