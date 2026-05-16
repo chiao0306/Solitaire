@@ -359,11 +359,11 @@
         
         <div style="margin-top: 5px; margin-bottom: 5px;">
             <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: #ccc;">🐕 門門的 High 度：</div>
-            <select id="menu-dog-speed" style="width: 100%; padding: 10px; margin-bottom: 0; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.5); color: #fff; font-size: 14px;">
+                <select id="menu-dog-speed" style="width: 100%; padding: 10px; margin-bottom: 0; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.5); color: #fff; font-size: 14px;">
                 <option value="1">100% (正常乖狗狗)</option>
-                <option value="1.5">150% (微嗨狀態)</option>
                 <option value="2">200% (很嗨蹦跳)</option>
                 <option value="5">500% (瘋狗模式轉起來)</option>
+                <option value="20">2000% (極限超瘋狗模式🌪️)</option>
             </select>
         </div>
 
@@ -428,8 +428,9 @@
                 let x = Math.random() * (parent.getBoundingClientRect().width - dogSize);
                 let y = Math.random() * (parent.getBoundingClientRect().height - dogSize);
                 
-                // 💡 讓平移彈跳的速度也跟著轉速微調變快 (但不要太瘋，不然會眼花)
-                let moveSpeed = 1.0 + (speed * 0.2); 
+                // 💡 讓平移彈跳的速度跟著轉速微調，但最高限制在 500% (值為 5)，防止移動過快眼花
+                let effectiveSpeed = Math.min(speed, 5);
+                let moveSpeed = 1.0 + (effectiveSpeed * 0.2);
                 let dx = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 let dy = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 
