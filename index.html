@@ -402,35 +402,40 @@
                 for (const user in serverDogs) {
                     const sDog = serverDogs[user];
                     const ts = sDog.timestamp ? sDog.timestamp.seconds : 0;
-                    const spd = sDog.speed || 1.0; // ✨ 抓取轉速，預設 1.0
+                    const spd = sDog.speed || 1.0;
                     
                     if (!activeDogManagers[user] || activeDogManagers[user].timestamp !== ts) {
-                        this.spawnDog(user, sDog.text, ts, spd); // 傳入轉速
+                        if (sDog.is_fading) continue; // 💡 已經在淡出的就不重新生成了
+                        this.spawnDog(user, sDog.text, ts, spd);
+                    } else if (sDog.is_fading && !activeDogManagers[user].fadingOut) {
+                        // 💡 後端廣播這隻狗要淡出了！全伺服器一起觸發淡出！
+                        this.dismissWithFadeout(user);
                     }
                 }
                 
                 for (const user in activeDogManagers) {
-                    if (!serverDogs[user] && !activeDogManagers[user].fadingOut) {
+                    // 如果這隻狗被後端徹底刪除 (例如有人發言導致遊戲推進)，就瞬間移除
+                    if (!serverDogs[user]) {
                         this.killDog(user);
                     }
                 }
             },
 
-            // ✨ 加入 speed 參數
             spawnDog: function(user, text, timestamp, speed = 1.0) {
                 if (activeDogManagers[user]) this.killDog(user); 
 
                 const parent = document.getElementById('chat-relative-container');
                 const el = document.createElement('div');
                 el.className = 'menu-dog-container';
+                el.style.opacity = "1";
+                el.style.transition = "opacity 1.9s ease-out"; // 💡 直接寫死過渡動畫，防衝突
                 
                 const dogSize = 65;
                 let x = Math.random() * (parent.getBoundingClientRect().width - dogSize);
                 let y = Math.random() * (parent.getBoundingClientRect().height - dogSize);
                 
-                // 💡 讓平移彈跳的速度跟著轉速微調，但最高限制在 500% (值為 5)，防止移動過快眼花
                 let effectiveSpeed = Math.min(speed, 5);
-                let moveSpeed = 1.0 + (effectiveSpeed * 0.2);
+                let moveSpeed = 1.0 + (effectiveSpeed * 0.2); 
                 let dx = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 let dy = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 
@@ -438,18 +443,14 @@
                 el.innerHTML = `${bubbleHtml}<img src="${DOG_HEAD_IMG_URL}" class="menu-dog-head">`;
                 parent.appendChild(el);
 
-                // ✨ 核心效果：動態計算旋轉秒數 (原本 10s / 轉速倍率)
                 const headImg = el.querySelector('.menu-dog-head');
-                if (headImg) {
-                    headImg.style.animationDuration = (10 / speed) + "s";
-                }
+                if (headImg) headImg.style.animationDuration = (10 / speed) + "s";
 
                 let manager = { element: el, x, y, dx, dy, timestamp, fadingOut: false, animId: null };
                 activeDogManagers[user] = manager;
                 
                 const animate = () => {
-                    // ... 這裡的 animate 內容完全不用動 ...
-                    if (!activeDogManagers[user] || activeDogManagers[user].fadingOut) return;
+                    if (!activeDogManagers[user]) return;
                     const rect = parent.getBoundingClientRect();
                     manager.x += manager.dx; manager.y += manager.dy;
                     
@@ -466,7 +467,7 @@
                 };
                 manager.animId = requestAnimationFrame(animate);
             },
-            
+
             killDog: function(user) {
                 const m = activeDogManagers[user];
                 if (!m) return;
@@ -479,12 +480,12 @@
                 const m = activeDogManagers[user];
                 if (!m || m.fadingOut) return;
                 m.fadingOut = true;
-                m.element.classList.add('fading-out');
+                
+                // 💡 強制透明度歸零，配合 CSS 讓它穩穩淡出 1.9 秒
+                m.element.style.opacity = "0"; 
                 
                 setTimeout(() => {
-                    if (m.element) m.element.style.display = "none"; 
-                    this.killDog(user);
-                    apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "dismiss_dog", text: "", avatar: currentAvatar });
+                    this.killDog(user); // 時間到直接刪掉 DOM，絕對不會閃現！
                 }, 1900); 
             }
         };
@@ -721,8 +722,10 @@
             // ✨ 1. 更新門門按鈕的文字與顏色 (Toggle 狀態)
             const menuBtn = document.getElementById('call-menu-btn');
             const serverDogs = gameState.activeDogs || {};
+            const myDog = serverDogs[currentPlayer];
 
-            if (serverDogs[currentPlayer]) {
+            // 💡 如果我的狗存在且還沒開始淡出，才顯示「收回」
+            if (myDog && !myDog.is_fading) {
                 menuBtn.innerHTML = "🐕 收回門門";
                 menuBtn.style.background = "#4b5563"; // 低調灰
             } else {
@@ -732,7 +735,7 @@
 
             // ✨ 2. 將後端資料交給群狗引擎去同步畫面
             dogEngine.syncDogs(serverDogs);
-        }
+        } // <-- 這是 updateUI 的結束括號
 
         function triggerFlashyEffect(userName, text) {
             const overlay = document.getElementById('idiom-overlay');
