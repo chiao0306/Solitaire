@@ -133,6 +133,19 @@
             flex-shrink: 0; /* 按鈕區絕不縮水 */
         }
         .rules-content b { color: #facc15; }
+        
+        /* ✨ 新增：全局處理中橫幅樣式 */
+        #processing-banner {
+            position: absolute;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff; padding: 15px 25px; border-radius: 12px;
+            font-size: 16px; font-weight: bold; text-align: center;
+            z-index: 50; display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #4b5563;
+            backdrop-filter: blur(4px);
+        }
+        
     </style>
 </head>
 <body>
@@ -192,6 +205,7 @@
             
             <div style="position: relative; margin-bottom: 15px;">
                 <div class="chat-box" id="chat-box" style="margin-bottom: 0;"></div>
+                <div id="processing-banner"></div> 
                 <div id="start-overlay" style="display: none;">
                     <button class="btn-primary" id="big-random-btn" style="width: 80%; padding: 25px 15px; font-size: 18px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); background: #10b981; border-radius: 12px; line-height: 1.5;">
                         🎲 請 AI 隨機出題<br>
@@ -508,6 +522,24 @@
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
             if (!targetWord) targetWord = "";
 
+            // ✨ 1. 取得全局動作鎖狀態與橫幅元素
+            const procBanner = document.getElementById('processing-banner');
+            let isRefProc = gameState.isRefereeProcessing;
+            let isHintProc = gameState.isHintProcessing;
+            let anyProcessing = isRefProc || isHintProc;
+
+            // ✨ 2. 控制畫面中央的跳窗橫幅顯示
+            if (isRefProc) {
+                procBanner.innerHTML = `👨‍⚖️ <b>${gameState.refereeCaller || '有人'}</b> 申請了裁判<br><span style="font-size:13px; color:#fbbf24; display:block; margin-top:5px;">AI 正在審理中，請稍候...</span>`;
+                procBanner.style.display = 'block';
+            } else if (isHintProc) {
+                procBanner.innerHTML = `💡 <b>${gameState.hintCaller || '有人'}</b> 正在購買提示<br><span style="font-size:13px; color:#fbbf24; display:block; margin-top:5px;">AI 正在思考中，請稍候...</span>`;
+                procBanner.style.display = 'block';
+            } else {
+                procBanner.style.display = 'none';
+            }
+
+            // ✨ 3. 玩家回合按鈕控制
             if (isMyTurn) {
                 if (hasStarted) {
                     turnInfo.innerHTML = `${myInfoPrefix}🟢 輪到你了！接續「${targetWord}」${sosString}`;
@@ -515,14 +547,25 @@
                 } else {
                     turnInfo.innerHTML = `${myInfoPrefix}🟢 尚未開局，任何人皆可出題！`; msgInput.placeholder = "你是第一個，請出題開局...";
                 }
-                turnInfo.style.color = "#4CAF50"; msgInput.disabled = false; sendBtn.disabled = false; surBtn.disabled = false;
                 
-                let myScore = scores[currentPlayer] || 0;
-                let myHints = roundHints[currentPlayer] || 0;
-                if (myHints === 0) { hintBtn.textContent = "💡 提示 (1/2)"; hintBtn.disabled = (myScore <= 5); } 
-                else if (myHints === 1) { hintBtn.textContent = "💡 提示 (2/2)"; hintBtn.disabled = (myScore <= 5); } 
-                else { hintBtn.textContent = "🚫 提示耗盡"; hintBtn.disabled = true; }
-                sosBtn.disabled = !!gameState.sosUser;
+                turnInfo.style.color = "#4CAF50"; 
+                // 💡 核心修改：不管有沒有人在發動技能，打字框永遠為你敞開！
+                msgInput.disabled = false; 
+                
+                if (anyProcessing) {
+                    // 如果有人在等 AI，把所有行動按鈕鎖住
+                    sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
+                } else {
+                    // 沒人在等 AI，正常開放
+                    sendBtn.disabled = false; surBtn.disabled = false;
+                    
+                    let myScore = scores[currentPlayer] || 0;
+                    let myHints = roundHints[currentPlayer] || 0;
+                    if (myHints === 0) { hintBtn.textContent = "💡 提示 (1/2)"; hintBtn.disabled = (myScore <= 5); } 
+                    else if (myHints === 1) { hintBtn.textContent = "💡 提示 (2/2)"; hintBtn.disabled = (myScore <= 5); } 
+                    else { hintBtn.textContent = "🚫 提示耗盡"; hintBtn.disabled = true; }
+                    sosBtn.disabled = !!gameState.sosUser;
+                }
             } else {
                 let currentActor = gameState.currentTurn || '其他人';
                 if (hasStarted) {
@@ -530,9 +573,19 @@
                     msgInput.placeholder = gameState.sosUser === currentActor ? `🚨：${currentActor} 逃生中 (剩 ${remainingSos} 次)...` : `⏳ 等待 ${currentActor} 接「${targetWord}」...`;
                 } else { turnInfo.innerHTML = `${myInfoPrefix}⏳ 等待開局...`; msgInput.placeholder = "等待任何人出題..."; }
                 
-                turnInfo.style.color = "gray"; msgInput.disabled = true; sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
+                turnInfo.style.color = "gray"; 
+                msgInput.disabled = true; sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
                 hintBtn.textContent = "💡 提示";
             }
+
+            // ✨ 4. 裁判與提示按鈕的特殊文字處理
+            let hasChat = chatHistory.some(m => m.type === 'chat');
+            refBtn.disabled = (gameState.alreadyJudged || anyProcessing || !hasChat || gameState.isGameOver);
+            
+            if (isRefProc) refBtn.innerHTML = "⏳ 裁判審理中...";
+            else refBtn.innerHTML = "⚖️ 裁判";
+            
+            if (isHintProc) hintBtn.innerHTML = "⏳ 提示處理中...";
         }
 
         function triggerFlashyEffect(userName, text) {
