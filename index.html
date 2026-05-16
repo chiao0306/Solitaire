@@ -145,6 +145,38 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.5); border: 1px solid #4b5563;
             backdrop-filter: blur(4px);
         }
+
+        /* ✨ 新增：門門狗頭飛飛動畫樣式 */
+        #menu-dog-container {
+            position: absolute; width: 45px; height: 45px;
+            pointer-events: none; /* 絕不擋住滑鼠點擊 */
+            z-index: 45; /* 浮在聊天室上，但在橫幅下 */
+            opacity: 1; transition: opacity 2s ease-out; /* 淡出效果 */
+            transform-origin: center center; display: none;
+        }
+        #menu-dog-container.fading-out { opacity: 0; }
+
+        #menu-dog-head {
+            width: 45px; height: 45px; border-radius: 50%; display: block;
+            animation: dog-slow-rotate 10s linear infinite; /* 緩慢自轉 */
+        }
+        @keyframes dog-slow-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* 門門對話泡泡 (不自轉) */
+        .dog-speech-bubble {
+            position: absolute; top: -15px; left: 35px;
+            background: #fff; color: #1f2937; padding: 4px 8px; border-radius: 8px; 
+            font-size: 11px; white-space: nowrap; font-weight: bold;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3); transform-origin: left bottom;
+        }
+        .dog-speech-bubble:after {
+            content: ''; position: absolute; left: -5px; bottom: 4px;
+            border-width: 5px 6px 5px 0; border-style: solid;
+            border-color: transparent #fff transparent transparent;
+        }
+
+        #call-menu-prompt::backdrop { background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); }
+        #call-menu-prompt[open] { display: flex; flex-direction: column; gap: 15px; border: none; background: rgba(31, 41, 55, 0.95); color: #fff; padding: 25px; border-radius: 16px; border: 1px solid #4b5563; max-width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
         
     </style>
 </head>
@@ -203,8 +235,11 @@
                 <div id="scoreboard" style="font-size: 13px; color: #ccc;">🏆 排行榜：載入中...</div>
             </div>
             
-            <div style="position: relative; margin-bottom: 15px;">
+            <div style="position: relative; margin-bottom: 15px;" id="chat-relative-container">
                 <div class="chat-box" id="chat-box" style="margin-bottom: 0;"></div>
+                
+                <div id="menu-dog-container"></div> 
+                
                 <div id="processing-banner"></div> 
                 <div id="start-overlay" style="display: none;">
                     <button class="btn-primary" id="big-random-btn" style="width: 80%; padding: 25px 15px; font-size: 18px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); background: #10b981; border-radius: 12px; line-height: 1.5;">
@@ -224,7 +259,8 @@
                 <button id="hint-btn" style="background: #8b5cf6;">💡 提示</button>
             </div>
             <button id="surrender-btn" class="btn-dark" style="width: 100%; margin-top: 5px;">🏳️ 我想不出來了 (投降)</button>
-            
+            <button id="call-menu-btn" class="btn-primary" style="flex: 1; background: #a855f7;">🐶 呼叫門門</button>
+
             <div id="toast-container"></div>
         </div>
     </div>
@@ -320,6 +356,15 @@
         </div>
     </dialog>
 
+    <dialog id="call-menu-prompt">
+        <div style="font-size: 16px; font-weight: bold; text-align: center; line-height: 1.4;">要讓「門門」說些什麼嗎？<br><span style="font-size: 13px; color: #9ca3af;">(限制最多 10 個字)</span></div>
+        <input type="text" id="menu-dog-input" maxlength="10" placeholder="留白則單純召喚..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.3); color: #fff;">
+        <div class="alert-btn-group" style="margin-top: 5px;">
+            <button class="btn-dark" id="menu-prompt-cancel" style="flex:1;">取消</button>
+            <button class="btn-primary" id="menu-prompt-confirm" style="flex:1; background: #a855f7;">確認召喚</button>
+        </div>
+    </dialog>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, query, where, orderBy, onSnapshot, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
@@ -336,7 +381,69 @@
         let globalRoomData = {};
         let previousScores = null; 
         let previousPendingIdiom = null; 
-        let unsubscribeLobby = null; // ✨ 新增這行
+        // ✨ 新增：門門動畫管理與引擎
+        let dogManager = {
+            element: null, relativeParent: null, dx: 1.5, dy: 1.5, currentX: 0, currentY: 0,
+            animationId: null, currentTimestamp: 0, fadingOut: false,
+            DOG_HEAD_IMG_URL: "https://你的圖床網址/門門去背圖片.png" // 🚨 記得換上你的圖片網址！
+        };
+
+        const dogAnimationMethods = {
+            spawnDog: function(text) {
+                if (!dogManager.element) {
+                    dogManager.relativeParent = document.getElementById('chat-relative-container'); 
+                    dogManager.element = document.getElementById('menu-dog-container');
+                }
+                if (dogManager.fadingOut) { dogManager.element.classList.remove('fading-out'); dogManager.fadingOut = false; }
+                if (dogManager.animationId) this.stopDogAnimation();
+
+                const parentRect = dogManager.relativeParent.getBoundingClientRect();
+                dogManager.currentX = Math.random() * (parentRect.width - 45);
+                dogManager.currentY = Math.random() * (parentRect.height - 45);
+                dogManager.dx = 1.0 * (Math.random() > 0.5 ? 1 : -1);
+                dogManager.dy = 1.0 * (Math.random() > 0.5 ? 1 : -1);
+
+                let bubbleHtml = text ? `<div class="dog-speech-bubble">${escapeHTML(text)}</div>` : "";
+                dogManager.element.innerHTML = `${bubbleHtml}<img src="${dogManager.DOG_HEAD_IMG_URL}" id="menu-dog-head">`;
+                dogManager.element.style.display = "block";
+                this.startDogAnimation();
+            },
+            startDogAnimation: function() {
+                if (dogManager.animationId) cancelAnimationFrame(dogManager.animationId);
+                const parentRect = dogManager.relativeParent.getBoundingClientRect();
+                const animate = () => {
+                    if (dogManager.fadingOut) { dogManager.animationId = null; return; }
+                    dogManager.currentX += dogManager.dx; dogManager.currentY += dogManager.dy;
+
+                    if (dogManager.currentX + 45 >= parentRect.width || dogManager.currentX <= 0) {
+                        dogManager.dx *= -1; dogManager.currentX = Math.max(0, Math.min(dogManager.currentX, parentRect.width - 45)); 
+                    }
+                    if (dogManager.currentY + 45 >= parentRect.height || dogManager.currentY <= 0) {
+                        dogManager.dy *= -1; dogManager.currentY = Math.max(0, Math.min(dogManager.currentY, parentRect.height - 45)); 
+                    }
+                    dogManager.element.style.left = dogManager.currentX + "px";
+                    dogManager.element.style.top = dogManager.currentY + "px";
+                    dogManager.animationId = requestAnimationFrame(animate);
+                };
+                dogManager.animationId = requestAnimationFrame(animate);
+            },
+            stopDogAnimation: function() {
+                if (dogManager.animationId) { cancelAnimationFrame(dogManager.animationId); dogManager.animationId = null; }
+                if(dogManager.element) dogManager.element.style.display = "none";
+                dogManager.fadingOut = false;
+            },
+            dismissWithFadeout: function() {
+                if (!dogManager.element || dogManager.fadingOut || !dogManager.animationId) return;
+                dogManager.fadingOut = true;
+                dogManager.element.classList.add('fading-out');
+                dogManager.currentTimestamp = 0; // 防止淡出期間因同步被立刻殺死
+                setTimeout(() => {
+                    this.stopDogAnimation();
+                    dogManager.element.classList.remove('fading-out');
+                    apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "dismiss_dog", avatar: currentAvatar });
+                }, 2000); 
+            }
+        };
         
         // ✨ 新增：防止 XSS 攻擊的字元跳脫函式
         function escapeHTML(str) {
@@ -574,6 +681,31 @@
             
             if (isHintProc) hintBtn.innerHTML = "⏳ 提示處理中...";
             else hintBtn.innerHTML = "💡 提示";
+
+            // ✨ ✨ 新增：門門動畫全域同步與 Toggle 按鈕狀態
+            const menuBtn = document.getElementById('call-menu-btn');
+            if (menuBtn) {
+                if (gameState.dogActive && gameState.dogCaller === currentPlayer) {
+                    menuBtn.innerHTML = "🐕 收回門門";
+                    menuBtn.style.background = "#4b5563"; // 變成低調的灰色
+                } else {
+                    menuBtn.innerHTML = "🐶 呼叫門門";
+                    menuBtn.style.background = "#a855f7"; // 變回紫色
+                }
+            }
+
+            const dogActive = gameState.dogActive;
+            const dogTimestamp = gameState.dogTimestamp ? gameState.dogTimestamp.seconds : 0; 
+            if (dogActive && dogTimestamp) {
+                if (!dogManager.animationId || dogManager.currentTimestamp !== dogTimestamp) {
+                    dogManager.currentTimestamp = dogTimestamp;
+                    dogAnimationMethods.spawnDog(gameState.dogText);
+                }
+            } else {
+                if (dogManager.animationId && !dogManager.fadingOut) {
+                    dogAnimationMethods.stopDogAnimation(); 
+                }
+            }
         }
 
         function triggerFlashyEffect(userName, text) {
@@ -1024,6 +1156,30 @@
             if(await showModalAlert("確定要投降並結束這場遊戲嗎？", true)) {
                 apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "game_over", text: "", avatar: currentAvatar }, 'surrender-btn');
             }
+        });
+
+        // ✨ 新增：門門的按鈕監聽器
+        document.getElementById('call-menu-btn').addEventListener('click', () => {
+            if (gameState.dogActive && gameState.dogCaller === currentPlayer) {
+                // Toggle：執行收回門門 (淡出)
+                if (!dogManager.fadingOut && dogManager.animationId) {
+                    dogAnimationMethods.dismissWithFadeout();
+                }
+            } else {
+                // 打開輸入框呼叫門門
+                document.getElementById('menu-dog-input').value = "";
+                document.getElementById('call-menu-prompt').showModal();
+            }
+        });
+
+        document.getElementById('menu-prompt-cancel').addEventListener('click', () => {
+            document.getElementById('call-menu-prompt').close();
+        });
+
+        document.getElementById('menu-prompt-confirm').addEventListener('click', () => {
+            const text = document.getElementById('menu-dog-input').value.trim();
+            apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "call_dog", text: text, avatar: currentAvatar });
+            document.getElementById('call-menu-prompt').close();
         });
 
         const menuDialog = document.getElementById('menu-dialog');
