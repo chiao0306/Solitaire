@@ -77,7 +77,10 @@ def get_default_state():
         "surrenderUser": None,
         "maxRounds": 0, "currentRound": 0, 
         "trackedPlayers": [], "playerRounds": {},
-        "isVerifyingLastMove": False, "verificationVotes": [] # ✨ 新增：最終驗證模式相關變數
+        "isVerifyingLastMove": False, "verificationVotes": [],
+        "isRefereeProcessing": False, "refereeCaller": None,
+        "isHintProcessing": False, "hintCaller": None,
+        "isRandomProcessing": False, "randomCaller": None # ✨ 新增隨機出題狀態預設值
     }
 
 def update_current_turn(state):
@@ -481,35 +484,72 @@ async def buy_hint(req: ActionRequest):
 
 @app.post("/random_topic")
 async def random_topic(req: ActionRequest):
-    prompt = "請給出一個隨機的繁體中文四字成語，只需回傳成語本身。"
-    res = model.generate_content(prompt, safety_settings=custom_safety_settings)
-    
-    if res and res.text:
-        idiom = res.text.strip()[:4]
-        state = get_room_state(req.room_name)
-        
-        # ✨ 回合制：AI出題視同開局，若名單尚未鎖定，立刻鎖定玩家
-        if not state.get("trackedPlayers"):
-            state["trackedPlayers"] = state.get("playersOrder", []).copy()
-            
-        state["lastIdiom"] = idiom
-        state["pendingIdiom"] = idiom
-        state["lastChatUser"] = req.user_name  
-        state["rejected"] = False
-        state["sosUser"] = None
-        state["sosCount"] = 0
-        state["roundHints"] = {}
-        update_current_turn(state)
-        save_room_state(req.room_name, state)
+    transaction_obj = db.transaction()
+    room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
 
-        db.collection(CHAT_COLLECTION).add({
-            "room_name": req.room_name, "user_name": "System", 
-            "text": f"【系統】遊戲開始！題目為「**{idiom}**」", 
-            "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
-        })
-        return {"status": "success"}
-    else:
-        raise HTTPException(status_code=500, detail="AI 出題失敗，請重試！")
+    # ✨ 使用交易鎖：確保同一時間只有一個人能成功請求 AI 出題，並設定全局鎖定狀態
+    @firestore.transactional
+    def lock_random_transaction(transaction, doc_ref):
+        snapshot = doc_ref.get(transaction=transaction)
+        curr_state = snapshot.to_dict() if snapshot.exists else get_default_state()
+        
+        # 如果系統已經在處理任何 AI 動作（裁判、提示、出題），就擋下
+        if curr_state.get("isRandomProcessing") or curr_state.get("isRefereeProcessing") or curr_state.get("isHintProcessing"):
+            return {"error": "系統忙碌中，請稍候！"}
+        
+        # 搶鎖成功，寫入出題中標記與是誰按的
+        transaction.update(doc_ref, {"isRandomProcessing": True, "randomCaller": req.user_name})
+        return {"success": True, "state": curr_state}
+
+    lock_res = lock_random_transaction(transaction_obj, room_ref)
+    if isinstance(lock_res, dict) and "error" in lock_res:
+        raise HTTPException(status_code=403, detail=lock_res["error"])
+    
+    try:
+        # 開始讓 Gemini 生成隨機成語
+        prompt = "請給出一個隨機的繁體中文四字成語，只需回傳成語本身。"
+        res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+        
+        if res and res.text:
+            idiom = res.text.strip()[:4]
+            
+            # 重新獲取最新的狀態，避免在 AI 生成的這兩秒內房間人員發生異動
+            fresh_snap = room_ref.get()
+            state = fresh_snap.to_dict() if fresh_snap.exists else lock_res["state"]
+            
+            # 回合制名單鎖定
+            if not state.get("trackedPlayers"):
+                state["trackedPlayers"] = state.get("playersOrder", []).copy()
+                
+            state["lastIdiom"] = idiom
+            state["pendingIdiom"] = idiom
+            state["lastChatUser"] = req.user_name  
+            state["rejected"] = False
+            state["sosUser"] = None
+            state["sosCount"] = 0
+            state["roundHints"] = {}
+            
+            # ✨ 出題完成，解除全局出題鎖定狀態
+            state["isRandomProcessing"] = False
+            state["randomCaller"] = None
+            
+            update_current_turn(state)
+            save_room_state(req.room_name, state)
+
+            db.collection(CHAT_COLLECTION).add({
+                "room_name": req.room_name, "user_name": "System", 
+                "text": f"【系統】遊戲開始！題目為「**{idiom}**」", 
+                "type": "system", "timestamp": firestore.SERVER_TIMESTAMP
+            })
+        else:
+            raise Exception("AI 回傳的題目內容為空")
+            
+    except Exception as e:
+        # 發生任何非預期錯誤，務必將鎖解除，以免房間卡死
+        db.collection(STATE_COLLECTION).document(req.room_name).update({"isRandomProcessing": False, "randomCaller": None})
+        raise HTTPException(status_code=500, detail=f"AI 出題失敗：{str(e)}")
+
+    return {"status": "success"}
 
 @app.post("/restart_game")
 async def restart_game(req: ActionRequest):
