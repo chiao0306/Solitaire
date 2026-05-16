@@ -381,6 +381,8 @@
         let globalRoomData = {};
         let previousScores = null; 
         let previousPendingIdiom = null; 
+        let unsubscribeLobby = null;
+        
         // ✨ 新增：門門動畫管理與引擎
         let dogManager = {
             element: null, relativeParent: null, dx: 1.5, dy: 1.5, currentX: 0, currentY: 0,
