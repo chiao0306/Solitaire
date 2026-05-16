@@ -157,7 +157,7 @@
         #menu-dog-container.fading-out { opacity: 0; }
 
         #menu-dog-head {
-            width: 45px; height: 45px; border-radius: 50%; display: block;
+            width: 65px; height: 65px; border-radius: 50%; display: block;
             animation: dog-slow-rotate 10s linear infinite; /* 緩慢自轉 */
         }
         @keyframes dog-slow-rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -253,11 +253,14 @@
                 <input type="text" id="msg-input" placeholder="輸入成語...">
                 <button class="btn-primary" id="send-btn" style="width: 80px;">送出</button>
             </div>
+            
             <div class="controls">
-                <button id="sos-btn" style="background: #eab308;">🆘 求生</button>
-                <button id="referee-btn" style="background: #3b82f6;">⚖️ 裁判</button>
-                <button id="hint-btn" style="background: #8b5cf6;">💡 提示</button>
-            <div style="display: flex; gap: 8px; margin-top: 5px;">
+                <button id="sos-btn" style="flex: 1; background: #eab308;">🆘 求生</button>
+                <button id="referee-btn" style="flex: 1; background: #3b82f6;">⚖️ 裁判</button>
+                <button id="hint-btn" style="flex: 1; background: #8b5cf6;">💡 提示</button>
+            </div>
+            
+            <div class="controls">
                 <button id="surrender-btn" class="btn-dark" style="flex: 1;">🏳️ 投降</button>
                 <button id="call-menu-btn" class="btn-primary" style="flex: 1; background: #a855f7;">🐶 呼叫門門</button>
             </div>
