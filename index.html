@@ -255,9 +255,9 @@
                 <button id="hint-btn" style="flex: 1; background: #8b5cf6;">💡 提示</button>
             </div>
             
-            <div style="display: flex; gap: 8px; margin-top: 5px;">
-                <button id="surrender-btn" class="btn-dark" style="flex: 1;">🏳️ 我想不出來了 (投降)</button>
-                <button id="call-menu-btn" class="btn-primary" style="flex: 1; background: #a855f7;">🐶 呼叫門門</button>
+            <div class="controls" style="margin-top: 5px;">
+                <button id="surrender-btn" class="btn-dark" style="flex: 1; white-space: nowrap; font-size: 15px;">🏳️ 投降 (認輸)</button>
+                <button id="call-menu-btn" class="btn-primary" style="flex: 1; background: #a855f7; white-space: nowrap; font-size: 15px;">🐶 呼叫門門</button>
             </div>
         </div>
     </div>
@@ -356,7 +356,18 @@
     <dialog id="call-menu-prompt">
         <div style="font-size: 16px; font-weight: bold; text-align: center; line-height: 1.4;">要讓「門門」說些什麼嗎？<br><span style="font-size: 13px; color: #9ca3af;">(限制最多 10 個字)</span></div>
         <input type="text" id="menu-dog-input" maxlength="10" placeholder="留白則單純召喚..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.3); color: #fff;">
-        <div class="alert-btn-group" style="margin-top: 5px;">
+        
+        <div style="margin-top: 5px; margin-bottom: 5px;">
+            <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: #ccc;">🐕 門門的 High 度：</div>
+            <select id="menu-dog-speed" style="width: 100%; padding: 10px; margin-bottom: 0; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.5); color: #fff; font-size: 14px;">
+                <option value="1">100% (正常乖狗狗)</option>
+                <option value="1.5">150% (微嗨狀態)</option>
+                <option value="2">200% (很嗨蹦跳)</option>
+                <option value="5">500% (瘋狗模式轉起來)</option>
+            </select>
+        </div>
+
+        <div class="alert-btn-group" style="margin-top: 10px;">
             <button class="btn-dark" id="menu-prompt-cancel" style="flex:1;">取消</button>
             <button class="btn-primary" id="menu-prompt-confirm" style="flex:1; background: #a855f7;">確認召喚</button>
         </div>
