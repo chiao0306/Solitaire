@@ -365,8 +365,22 @@ async def call_referee(req: ActionRequest):
                 state["scores"][last_user] -= penalty
                 if state["scores"][last_user] <= 0:
                     state["isGameOver"] = True
+
+            # 🔧 修復 Bug 1：如果被判錯，回合不算數，把發言者的回合計數扣回來！
+            if last_user and last_user in state.get("trackedPlayers", []):
+                state["playerRounds"] = state.get("playerRounds", {})
+                state["playerRounds"][last_user] = max(0, state["playerRounds"].get(last_user, 0) - 1)
+                tracked = state["trackedPlayers"]
+                if tracked:
+                    state["currentRound"] = min([state["playerRounds"].get(p, 0) for p in tracked])
+
             state["sosUser"] = state.get("lastChatPrevSosUser")
             state["sosCount"] = state.get("lastChatPrevSosCount")
+            
+            # 🔧 修復 Bug 2 (❌ 的情況)：如果是最終審查被退件，取消審查，不結束遊戲，讓玩家重接！
+            if state.get("isVerifyingLastMove"):
+                state["isVerifyingLastMove"] = False
+
         elif '✅' in result_text:
             last_user = state.get("lastChatUser")
             if last_user and last_user in state.get("scores", {}):
@@ -374,15 +388,15 @@ async def call_referee(req: ActionRequest):
                 prev_sos_count = state.get("lastChatPrevSosCount", 0)
                 if not (last_user == prev_sos_user and prev_sos_count < 2):
                     state["scores"][last_user] += 5
+            
+            # 🔧 修復 Bug 2 (✅ 的情況)：如果審查通過，才真正觸發遊戲結束！
+            if state.get("isVerifyingLastMove"):
+                state["isVerifyingLastMove"] = False
+                state["isGameOver"] = True 
         
         # ✨ 判定完成，解除鎖定
         state["isRefereeProcessing"] = False
         state["refereeCaller"] = None
-        
-        # 🚨 核心修復：如果是在「最終回合審查」階段呼叫的裁判，判決完直接強制結束遊戲！
-        if state.get("isVerifyingLastMove"):
-            state["isVerifyingLastMove"] = False
-            state["isGameOver"] = True
         
         update_current_turn(state)
         save_room_state(req.room_name, state)
