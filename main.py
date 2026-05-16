@@ -822,6 +822,10 @@ async def revoke_chat(req: ActionRequest):
         state["sosUser"] = state.get("lastChatPrevSosUser")
         state["sosCount"] = state.get("lastChatPrevSosCount")
 
+        # ✨ 修復隱患一：如果剛好在結算審查階段收回發言，必須強制解除審查狀態！
+        state["isVerifyingLastMove"] = False
+        state["verificationVotes"] = []
+
         update_current_turn(state)
         state["updated_at"] = firestore.SERVER_TIMESTAMP
 
