@@ -691,7 +691,7 @@ async def admin_action(req: AdminRequest):
                 
             # ✨ 新增防護：如果刪除的玩家剛好是門門的召喚者，把門門也取消掉
             if state.get("dogCaller") == target:
-                state["activeDogs"] = {}
+                state["dogActive"] = False
                 state["dogCaller"] = None
 
             # 回合制計算更新
