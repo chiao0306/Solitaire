@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>成語接龍🐉</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0e1117; color: #fafafa; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center;}
@@ -164,11 +164,13 @@
 
         /* 門門對話泡泡 (不自轉) */
         .dog-speech-bubble {
-            position: absolute; top: -15px; left: 35px;
+            position: absolute; top: -15px; 
+            left: 55px; /* 💡 稍微往右移，配合變大的狗頭 */
             background: #fff; color: #1f2937; padding: 4px 8px; border-radius: 8px; 
             font-size: 11px; white-space: nowrap; font-weight: bold;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3); transform-origin: left bottom;
         }
+
         .dog-speech-bubble:after {
             content: ''; position: absolute; left: -5px; bottom: 4px;
             border-width: 5px 6px 5px 0; border-style: solid;
@@ -235,7 +237,9 @@
                 <div id="scoreboard" style="font-size: 13px; color: #ccc;">🏆 排行榜：載入中...</div>
             </div>
             
-            <div style="position: relative; margin-bottom: 15px;" id="chat-relative-container">
+            <div style="position: relative; margin-bottom: 15px; overflow: hidden; border-radius: 10px;" id="chat-relative-container">
+                <div class="chat-box" id="chat-box" style="margin-bottom: 0;"></div>
+                
                 <div class="chat-box" id="chat-box" style="margin-bottom: 0;"></div>
                 
                 <div id="menu-dog-container"></div> 
@@ -402,8 +406,8 @@
                 if (dogManager.animationId) this.stopDogAnimation();
 
                 const parentRect = dogManager.relativeParent.getBoundingClientRect();
-                dogManager.currentX = Math.random() * (parentRect.width - 45);
-                dogManager.currentY = Math.random() * (parentRect.height - 45);
+                dogManager.currentX = Math.random() * (parentRect.width - 65);
+                dogManager.currentY = Math.random() * (parentRect.height - 65);
                 dogManager.dx = 1.0 * (Math.random() > 0.5 ? 1 : -1);
                 dogManager.dy = 1.0 * (Math.random() > 0.5 ? 1 : -1);
 
@@ -419,11 +423,11 @@
                     if (dogManager.fadingOut) { dogManager.animationId = null; return; }
                     dogManager.currentX += dogManager.dx; dogManager.currentY += dogManager.dy;
 
-                    if (dogManager.currentX + 45 >= parentRect.width || dogManager.currentX <= 0) {
-                        dogManager.dx *= -1; dogManager.currentX = Math.max(0, Math.min(dogManager.currentX, parentRect.width - 45)); 
+                    if (dogManager.currentX + 65 >= parentRect.width || dogManager.currentX <= 0) {
+                        dogManager.dx *= -1; dogManager.currentX = Math.max(0, Math.min(dogManager.currentX, parentRect.width - 65)); 
                     }
-                    if (dogManager.currentY + 45 >= parentRect.height || dogManager.currentY <= 0) {
-                        dogManager.dy *= -1; dogManager.currentY = Math.max(0, Math.min(dogManager.currentY, parentRect.height - 45)); 
+                    if (dogManager.currentY + 65 >= parentRect.height || dogManager.currentY <= 0) {
+                        dogManager.dy *= -1; dogManager.currentY = Math.max(0, Math.min(dogManager.currentY, parentRect.height - 65)); 
                     }
                     dogManager.element.style.left = dogManager.currentX + "px";
                     dogManager.element.style.top = dogManager.currentY + "px";
