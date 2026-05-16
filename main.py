@@ -333,10 +333,10 @@ async def system_action(req: ActionRequest):
             display_text = f"【系統】**{req.user_name}** 覺得太安靜了，呼叫了專屬「門門」出來晃晃！"
             if dog_txt: display_text += f"（門門喃喃自語：{dog_txt}）"
 
-        # ✨ 新增：收回個人的門門
+        # ✨ 新增：收回個人的門門 (改為標記淡出狀態，讓全伺服器的人都看到淡出)
         elif req.action_type == "dismiss_dog":
             if "activeDogs" in state and req.user_name in state["activeDogs"]:
-                del state["activeDogs"][req.user_name] # 刪除自己的狗頭
+                state["activeDogs"][req.user_name]["is_fading"] = True
                 changed = True
 
         if changed:
