@@ -82,11 +82,8 @@ def get_default_state():
         "isHintProcessing": False, "hintCaller": None,
         "isRandomProcessing": False, "randomCaller": None,
         
-        # ✨ 新增：狗頭 (門門) 專用狀態
-        "dogActive": False,         # 狗頭是否正在飛
-        "dogText": None,            # 狗頭頭上的對話內容
-        "dogCaller": None,          # 是哪個玩家發動的
-        "dogTimestamp": 0           # 發動的時間戳 (前端防呆用)
+        # ✨ 升級為群狗系統 (字典格式：用來存放每個玩家專屬的狗頭狀態)
+        "activeDogs": {}
     }
     
 def update_current_turn(state):
@@ -143,7 +140,7 @@ async def send_chat(req: ChatRequest):
 
         doc = room_doc_ref.get(transaction=transaction)
         state = doc.to_dict() if doc.exists else get_default_state()
-        state["dogActive"] = False
+        state["activeDogs"] = {}
         
         current_turn = state.get("currentTurn")
         has_started = bool(state.get("lastIdiom") or state.get("pendingIdiom"))
@@ -309,23 +306,28 @@ async def system_action(req: ActionRequest):
                     state["isGameOver"] = True
             changed = True
 
-        # ✨ 新增：發動狗頭 (門門)
+        # ✨ 新增：發動個人的狗頭 (門門)
         elif req.action_type == "call_dog":
             dog_txt = (req.text or "").strip()[:10] if req.text else None
-            state["dogActive"] = True
-            state["dogText"] = dog_txt if dog_txt else None
-            state["dogCaller"] = req.user_name
-            state["dogTimestamp"] = firestore.SERVER_TIMESTAMP
+            
+            # 確保 activeDogs 字典存在
+            if "activeDogs" not in state:
+                state["activeDogs"] = {}
+                
+            # 把狗頭綁定在發動者名下
+            state["activeDogs"][req.user_name] = {
+                "text": dog_txt,
+                "timestamp": firestore.SERVER_TIMESTAMP
+            }
             changed = True
             
-            display_text = f"【系統】**{req.user_name}** 覺得太安靜了，呼叫了「門門」出來晃晃！"
-            if dog_txt: display_text += f"（門門喃喃自語：{dog_txt}）"
+            display_text = f"【系統】**{req.user_name}** 覺得太安靜了，呼叫了專屬「門門」！"
+            if dog_txt: display_text += f"（門門：{dog_txt}）"
 
-        # ✨ 新增：收回門門
+        # ✨ 新增：收回個人的門門
         elif req.action_type == "dismiss_dog":
-            if state.get("dogCaller") == req.user_name:
-                state["dogActive"] = False
-                state["dogCaller"] = None
+            if "activeDogs" in state and req.user_name in state["activeDogs"]:
+                del state["activeDogs"][req.user_name] # 刪除自己的狗頭
                 changed = True
 
         if changed:
@@ -435,7 +437,7 @@ async def call_referee(req: ActionRequest):
         
         # ✨ 判定完成，解除鎖定
         state["isRefereeProcessing"] = False
-        state["dogActive"] = False
+        state["activeDogs"] = {}
         state["refereeCaller"] = None
         
         update_current_turn(state)
@@ -528,7 +530,7 @@ async def buy_hint(req: ActionRequest):
         
         # ✨ 提示完成，解除鎖定
         state["isHintProcessing"] = False
-        state["dogActive"] = False
+        state["activeDogs"] = {}
         state["hintCaller"] = None
         
         update_current_turn(state)
@@ -589,7 +591,7 @@ async def random_topic(req: ActionRequest):
             
             # ✨ 出題完成，解除全局出題鎖定狀態
             state["isRandomProcessing"] = False
-            state["dogActive"] = False
+            state["activeDogs"] = {}
             state["randomCaller"] = None
             
             update_current_turn(state)
@@ -689,7 +691,7 @@ async def admin_action(req: AdminRequest):
                 
             # ✨ 新增防護：如果刪除的玩家剛好是門門的召喚者，把門門也取消掉
             if state.get("dogCaller") == target:
-                state["dogActive"] = False
+                state["activeDogs"] = {}
                 state["dogCaller"] = None
 
             # 回合制計算更新
