@@ -634,8 +634,25 @@
                 msgInput.disabled = true; msgInput.placeholder = "遊戲已結算";
                 sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; startOverlay.style.display = "none";
                 
-                // ✨ 修復問題三：遊戲結束時，強制關閉任何可能卡在畫面上的處理中橫幅
+                // 關閉可能卡在畫面上的 AI 處理中橫幅
                 document.getElementById('processing-banner').style.display = 'none';
+
+                // ✨ 安全修改：讓遊戲結算後，依然能同步門門按鈕狀態與群狗動畫
+                const menuBtn = document.getElementById('call-menu-btn');
+                const serverDogs = gameState.activeDogs || {};
+                const myDog = serverDogs[currentPlayer];
+
+                if (myDog && !myDog.is_fading) {
+                    menuBtn.innerHTML = "🐕 收回門門";
+                    menuBtn.style.background = "#4b5563"; // 低調灰
+                } else {
+                    menuBtn.innerHTML = "🐶 呼叫門門";
+                    menuBtn.style.background = "#a855f7"; // 招喚紫
+                }
+                
+                // 驅動群狗引擎渲染畫面
+                dogEngine.syncDogs(serverDogs);
+
                 return;
             }
 
