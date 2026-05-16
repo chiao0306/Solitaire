@@ -335,11 +335,9 @@ async def call_referee(req: ActionRequest):
         snapshot = doc_ref.get(transaction=transaction)
         curr_state = snapshot.to_dict() if snapshot.exists else get_default_state()
         
-        # ✨ 檢查是否有人正在使用任何技能
         if curr_state.get("isRefereeProcessing") or curr_state.get("isHintProcessing") or curr_state.get("alreadyJudged"):
             return {"error": "系統忙碌中或已經判決過囉！"}
         
-        # ✨ 鎖定並紀錄是「誰」按的
         transaction.update(doc_ref, {"isRefereeProcessing": True, "refereeCaller": req.user_name})
         return {"success": True, "state": curr_state}
 
@@ -380,6 +378,11 @@ async def call_referee(req: ActionRequest):
         # ✨ 判定完成，解除鎖定
         state["isRefereeProcessing"] = False
         state["refereeCaller"] = None
+        
+        # 🚨 核心修復：如果是在「最終回合審查」階段呼叫的裁判，判決完直接強制結束遊戲！
+        if state.get("isVerifyingLastMove"):
+            state["isVerifyingLastMove"] = False
+            state["isGameOver"] = True
         
         update_current_turn(state)
         save_room_state(req.room_name, state)
