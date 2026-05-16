@@ -402,8 +402,10 @@
                 for (const user in serverDogs) {
                     const sDog = serverDogs[user];
                     const ts = sDog.timestamp ? sDog.timestamp.seconds : 0;
+                    const spd = sDog.speed || 1.0; // ✨ 抓取轉速，預設 1.0
+                    
                     if (!activeDogManagers[user] || activeDogManagers[user].timestamp !== ts) {
-                        this.spawnDog(user, sDog.text, ts);
+                        this.spawnDog(user, sDog.text, ts, spd); // 傳入轉速
                     }
                 }
                 
@@ -414,7 +416,8 @@
                 }
             },
 
-            spawnDog: function(user, text, timestamp) {
+            // ✨ 加入 speed 參數
+            spawnDog: function(user, text, timestamp, speed = 1.0) {
                 if (activeDogManagers[user]) this.killDog(user); 
 
                 const parent = document.getElementById('chat-relative-container');
@@ -424,17 +427,27 @@
                 const dogSize = 65;
                 let x = Math.random() * (parent.getBoundingClientRect().width - dogSize);
                 let y = Math.random() * (parent.getBoundingClientRect().height - dogSize);
-                let dx = 1.0 * (Math.random() > 0.5 ? 1 : -1);
-                let dy = 1.0 * (Math.random() > 0.5 ? 1 : -1);
+                
+                // 💡 讓平移彈跳的速度也跟著轉速微調變快 (但不要太瘋，不然會眼花)
+                let moveSpeed = 1.0 + (speed * 0.2); 
+                let dx = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
+                let dy = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 
                 let bubbleHtml = text ? `<div class="dog-speech-bubble">${escapeHTML(text)}</div>` : "";
                 el.innerHTML = `${bubbleHtml}<img src="${DOG_HEAD_IMG_URL}" class="menu-dog-head">`;
                 parent.appendChild(el);
 
+                // ✨ 核心效果：動態計算旋轉秒數 (原本 10s / 轉速倍率)
+                const headImg = el.querySelector('.menu-dog-head');
+                if (headImg) {
+                    headImg.style.animationDuration = (10 / speed) + "s";
+                }
+
                 let manager = { element: el, x, y, dx, dy, timestamp, fadingOut: false, animId: null };
                 activeDogManagers[user] = manager;
                 
                 const animate = () => {
+                    // ... 這裡的 animate 內容完全不用動 ...
                     if (!activeDogManagers[user] || activeDogManagers[user].fadingOut) return;
                     const rect = parent.getBoundingClientRect();
                     manager.x += manager.dx; manager.y += manager.dy;
@@ -452,7 +465,7 @@
                 };
                 manager.animId = requestAnimationFrame(animate);
             },
-
+            
             killDog: function(user) {
                 const m = activeDogManagers[user];
                 if (!m) return;
@@ -1259,8 +1272,13 @@
 
             document.getElementById('menu-prompt-cancel').addEventListener('click', () => menuPrompt.close());
             document.getElementById('menu-prompt-confirm').addEventListener('click', () => {
-                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "call_dog", text: menuInput.value.trim(), avatar: currentAvatar });
-                menuPrompt.close();
+                const text = document.getElementById('menu-dog-input').value.trim();
+                // ✨ 抓取使用者選擇的轉速
+                const speed = document.getElementById('menu-dog-speed').value;
+                
+                // ✨ 利用 target_text 把速度傳給後端
+                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "call_dog", text: text, avatar: currentAvatar, target_text: speed });
+                document.getElementById('call-menu-prompt').close();
             });
         }
         
