@@ -177,6 +177,9 @@
     </style>
 </head>
 <body>
+    
+    <div id="toast-container"></div>
+    
     <div class="container">
         <div class="header">
             <h1>成語接龍🐉</h1>
@@ -630,6 +633,9 @@
                 turnInfo.innerHTML = `${myInfoPrefix}🏁 遊戲結束！請在選單點擊重新開始。`; turnInfo.style.color = "#ef4444";
                 msgInput.disabled = true; msgInput.placeholder = "遊戲已結算";
                 sendBtn.disabled = true; refBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true; startOverlay.style.display = "none";
+                
+                // ✨ 修復問題三：遊戲結束時，強制關閉任何可能卡在畫面上的處理中橫幅
+                document.getElementById('processing-banner').style.display = 'none';
                 return;
             }
 
@@ -1084,16 +1090,20 @@
                 
                 let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
                 
+                // ✨ 修復問題二：改用 Set 紀錄所有播過動畫的 ID，避免收回時重播
+                window.animatedMsgIds = window.animatedMsgIds || new Set();
+                
                 if (lastChat && lastChat.text.length === 4) {
                     let msgId = lastChat.id; 
-                    if (window.lastAnimatedMsgId !== msgId) {
+                    if (!window.animatedMsgIds.has(msgId)) {
                         window.isAnimating = true;
                         triggerFlashyEffect(lastChat.user_name, lastChat.text);
-                        window.lastAnimatedMsgId = msgId;
+                        window.animatedMsgIds.add(msgId);
                     }
                 }
 
                 updateUI(); 
+
             }); 
 
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar, max_rounds: applyMaxRounds });
