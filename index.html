@@ -890,7 +890,8 @@
                                 }
                                 
                                 let msgId = lastChat.id;
-                                let willAnimate = lastChat.text.length === 4 && window.lastAnimatedMsgId !== msgId;
+                                // ✨ 修復卡關問題：改用新的 animatedMsgIds 集合來確認動畫是否真的播完了
+                                let willAnimate = lastChat.text.length === 4 && (!window.animatedMsgIds || !window.animatedMsgIds.has(msgId));
 
                                 const toastContainer = document.getElementById('toast-container');
                                 const isToastShowing = toastContainer && toastContainer.childElementCount > 0;
