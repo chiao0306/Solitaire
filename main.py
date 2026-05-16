@@ -140,11 +140,11 @@ async def send_chat(req: ChatRequest):
     # ✨ 2. 定義 Transaction 內容
     @firestore.transactional
     def process_chat_transaction(transaction, room_doc_ref, chat_doc_ref):
-        state["dogActive"] = False
+
         doc = room_doc_ref.get(transaction=transaction)
         state = doc.to_dict() if doc.exists else get_default_state()
+        state["dogActive"] = False
         
-        # --- 之前的驗證邏輯 ---
         current_turn = state.get("currentTurn")
         has_started = bool(state.get("lastIdiom") or state.get("pendingIdiom"))
         players = state.get("playersOrder", [])
@@ -667,6 +667,17 @@ async def admin_action(req: AdminRequest):
             # 修改遊戲狀態
             if target in state.get("playersOrder", []):
                 state["playersOrder"].remove(target)
+            if target in state.get("scores", {}):
+                del state["scores"][target]
+                
+            if state.get("sosUser") == target:
+                state["sosUser"] = None
+                state["sosCount"] = 0
+                
+            # ✨ 新增防護：如果刪除的玩家剛好是門門的召喚者，把門門也取消掉
+            if state.get("dogCaller") == target:
+                state["dogActive"] = False
+                state["dogCaller"] = None
             if target in state.get("scores", {}):
                 del state["scores"][target]
                 
