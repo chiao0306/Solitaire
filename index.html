@@ -257,11 +257,10 @@
                 <button id="sos-btn" style="background: #eab308;">🆘 求生</button>
                 <button id="referee-btn" style="background: #3b82f6;">⚖️ 裁判</button>
                 <button id="hint-btn" style="background: #8b5cf6;">💡 提示</button>
+            <div style="display: flex; gap: 8px; margin-top: 5px;">
+                <button id="surrender-btn" class="btn-dark" style="flex: 1;">🏳️ 投降</button>
+                <button id="call-menu-btn" class="btn-primary" style="flex: 1; background: #a855f7;">🐶 呼叫門門</button>
             </div>
-            <button id="surrender-btn" class="btn-dark" style="width: 100%; margin-top: 5px;">🏳️ 我想不出來了 (投降)</button>
-            <button id="call-menu-btn" class="btn-primary" style="flex: 1; background: #a855f7;">🐶 呼叫門門</button>
-
-            <div id="toast-container"></div>
         </div>
     </div>
 
@@ -387,7 +386,7 @@
         let dogManager = {
             element: null, relativeParent: null, dx: 1.5, dy: 1.5, currentX: 0, currentY: 0,
             animationId: null, currentTimestamp: 0, fadingOut: false,
-            DOG_HEAD_IMG_URL: "https://你的圖床網址/門門去背圖片.png" // 🚨 記得換上你的圖片網址！
+            DOG_HEAD_IMG_URL: "https://postimg.cc/jwnwvWNH" // 🚨 記得換上你的圖片網址！
         };
 
         const dogAnimationMethods = {
