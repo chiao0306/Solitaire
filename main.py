@@ -306,23 +306,32 @@ async def system_action(req: ActionRequest):
                     state["isGameOver"] = True
             changed = True
 
-        # ✨ 新增：發動個人的狗頭 (門門)
+        # ✨ 新增：發動個人的狗頭 (門門)，包含轉速
         elif req.action_type == "call_dog":
             dog_txt = (req.text or "").strip()[:10] if req.text else None
+            
+            # 解析轉速 (預設 1.0)
+            speed = 1.0
+            if req.target_text:
+                try:
+                    speed = float(req.target_text)
+                except:
+                    pass
             
             # 確保 activeDogs 字典存在
             if "activeDogs" not in state:
                 state["activeDogs"] = {}
                 
-            # 把狗頭綁定在發動者名下
+            # 把狗頭綁定在發動者名下，並存入轉速
             state["activeDogs"][req.user_name] = {
                 "text": dog_txt,
-                "timestamp": firestore.SERVER_TIMESTAMP
+                "timestamp": firestore.SERVER_TIMESTAMP,
+                "speed": speed  # 💡 存入轉速！
             }
             changed = True
             
-            display_text = f"【系統】**{req.user_name}** 覺得太安靜了，呼叫了專屬「門門」！"
-            if dog_txt: display_text += f"（門門：{dog_txt}）"
+            display_text = f"【系統】**{req.user_name}** 覺得太安靜了，呼叫了專屬「門門」出來晃晃！"
+            if dog_txt: display_text += f"（門門喃喃自語：{dog_txt}）"
 
         # ✨ 新增：收回個人的門門
         elif req.action_type == "dismiss_dog":
