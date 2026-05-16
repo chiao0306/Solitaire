@@ -97,11 +97,9 @@
             background: #1e293b;
             color: #f8fafc;
             padding: 0;
-            /* 🚨 這裡拿掉了原本的 display: flex; 跟 flex-direction */
             box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         }
         
-        /* ✨ 加上這段：只有當彈窗被正確開啟 (open) 時，才套用 flex 垂直排列 */
         #rules-dialog[open] {
             display: flex;
             flex-direction: column; 
@@ -117,12 +115,12 @@
             text-align: center;
             font-size: 20px;
             font-weight: bold;
-            flex-shrink: 0; /* 標題絕不縮水 */
+            flex-shrink: 0; 
         }
         .rules-content {
             padding: 20px;
-            overflow-y: auto; /* 只有內容區域可以上下滑動 */
-            flex-grow: 1; /* 填滿剩下的空間 */
+            overflow-y: auto; 
+            flex-grow: 1; 
             line-height: 1.6;
         }
         .rules-footer {
@@ -130,11 +128,11 @@
             background: #1e293b;
             border-top: 1px solid #334155;
             text-align: center;
-            flex-shrink: 0; /* 按鈕區絕不縮水 */
+            flex-shrink: 0; 
         }
         .rules-content b { color: #facc15; }
         
-        /* ✨ 新增：全局處理中橫幅樣式 */
+        /* ✨ 全局處理中橫幅樣式 */
         #processing-banner {
             position: absolute;
             top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -146,7 +144,7 @@
             backdrop-filter: blur(4px);
         }
 
-        /* ✨ 升級版：門門群狗飛飛動畫樣式 (改成 class) */
+        /* ✨ 門門群狗飛飛動畫樣式 (改成 class) */
         .menu-dog-container {
             position: absolute; width: 65px; height: 65px;
             pointer-events: none; /* 絕不擋住滑鼠點擊 */
@@ -257,9 +255,9 @@
                 <button id="hint-btn" style="flex: 1; background: #8b5cf6;">💡 提示</button>
             </div>
             
-            <div class="controls">
-                <button id="surrender-btn" class="btn-dark" style="flex: 1;">🏳️ 投降</button>
+            <div style="display: flex; gap: 8px; margin-top: 5px;">
                 <button id="call-menu-btn" class="btn-primary" style="flex: 1; background: #a855f7;">🐶 呼叫門門</button>
+                <button id="surrender-btn" class="btn-dark" style="flex: 2;">🏳️ 我想不出來了 (投降)</button>
             </div>
         </div>
     </div>
@@ -383,15 +381,13 @@
         let unsubscribeLobby = null;
         
         // ✨ ✨ ✨ 門門群狗 DVD 動畫引擎 ✨ ✨ ✨
-        // 字典用來追蹤每個玩家的狗頭： { user_name: { element, x, y, dx, dy, animId, fadingOut, timestamp } }
         let activeDogManagers = {}; 
-        const DOG_HEAD_IMG_URL = "https://i.postimg.cc/xCtvfM14/venven.png"; // 🚨 記得換圖片網址！
+        const DOG_HEAD_IMG_URL = "https://i.postimg.cc/xCtvfM14/venven.png"; 
 
         const dogEngine = {
             syncDogs: function(serverDogs) {
                 serverDogs = serverDogs || {};
                 
-                // 1. 檢查有沒有「新生出來」或「剛換句話說」的狗
                 for (const user in serverDogs) {
                     const sDog = serverDogs[user];
                     const ts = sDog.timestamp ? sDog.timestamp.seconds : 0;
@@ -400,16 +396,15 @@
                     }
                 }
                 
-                // 2. 檢查有沒有「已經消失」的狗 (如果有人互動清空了 serverDogs)
                 for (const user in activeDogManagers) {
                     if (!serverDogs[user] && !activeDogManagers[user].fadingOut) {
-                        this.killDog(user); // 瞬間毀滅 (因為是遊戲互動觸發的)
+                        this.killDog(user);
                     }
                 }
             },
 
             spawnDog: function(user, text, timestamp) {
-                if (activeDogManagers[user]) this.killDog(user); // 清除舊的
+                if (activeDogManagers[user]) this.killDog(user); 
 
                 const parent = document.getElementById('chat-relative-container');
                 const el = document.createElement('div');
@@ -461,7 +456,6 @@
                 m.fadingOut = true;
                 m.element.classList.add('fading-out');
                 
-                // 💡 解決閃爍問題：設定 1900ms，在完全透明之前提早把元素拔除隱藏
                 setTimeout(() => {
                     if (m.element) m.element.style.display = "none"; 
                     this.killDog(user);
@@ -533,7 +527,6 @@
             });
         }
 
-        // ✨ 新增：處理大廳與重新開始選單的回合制下拉顯示
         document.getElementById('lobby-turn-cb').addEventListener('change', (e) => {
             document.getElementById('lobby-rounds-sel').style.display = e.target.checked ? 'block' : 'none';
         });
@@ -544,7 +537,7 @@
         listenToGlobalRooms();
         function listenToGlobalRooms() {
             const docRef = doc(db, "system_meta", "active_rooms");
-            unsubscribeLobby = onSnapshot(docRef, (docSnap) => { // ✨ 加上 unsubscribeLobby = 
+            unsubscribeLobby = onSnapshot(docRef, (docSnap) => { 
                 if (docSnap.exists()) {
                     globalRoomData = docSnap.data(); renderRoomChips(Object.keys(globalRoomData));
                     const currentInput = document.getElementById('room-input').value;
@@ -628,14 +621,12 @@
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
 
-            // ✨ 1. 取得全局動作鎖狀態與橫幅元素（加入隨機出題鎖）
             const procBanner = document.getElementById('processing-banner');
             let isRefProc = gameState.isRefereeProcessing;
             let isHintProc = gameState.isHintProcessing;
-            let isRandomProc = gameState.isRandomProcessing; // 新增：隨機出題中狀態
+            let isRandomProc = gameState.isRandomProcessing; 
             let anyProcessing = isRefProc || isHintProc || isRandomProc; 
 
-            // ✨ 2. 控制畫面中央的跳窗橫幅顯示
             if (isRefProc) {
                 procBanner.innerHTML = `👨‍⚖️ <b>${gameState.refereeCaller || '有人'}</b> 申請了裁判<br><span style="font-size:13px; color:#fbbf24; display:block; margin-top:5px;">AI 正在審理中，請稍候...</span>`;
                 procBanner.style.display = 'block';
@@ -658,7 +649,6 @@
             let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
             if (!targetWord) targetWord = "";
 
-            // ✨ 3. 玩家回合按鈕控制
             if (isMyTurn) {
                 if (hasStarted) {
                     turnInfo.innerHTML = `${myInfoPrefix}🟢 輪到你了！接續「${targetWord}」${sosString}`;
@@ -668,14 +658,11 @@
                 }
                 
                 turnInfo.style.color = "#4CAF50"; 
-                // 💡 核心設計：不論 AI 是否在運作，輸入框永遠保持解開，供玩家隨時輸入
                 msgInput.disabled = false; 
                 
                 if (anyProcessing) {
-                    // 如果有人在等 AI（含隨機出題），把所有行動按鈕鎖住，防止搶拍
                     sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
                 } else {
-                    // 沒人在等 AI，正常開放
                     sendBtn.disabled = false; surBtn.disabled = false;
                     
                     let myScore = scores[currentPlayer] || 0;
@@ -697,7 +684,6 @@
                 hintBtn.textContent = "💡 提示";
             }
 
-            // ✨ 4. 裁判與提示按鈕的特殊文字處理
             let hasChat = chatHistory.some(m => m.type === 'chat');
             refBtn.disabled = (gameState.alreadyJudged || anyProcessing || !hasChat || gameState.isGameOver);
             
@@ -721,19 +707,6 @@
 
             // ✨ 2. 將後端資料交給群狗引擎去同步畫面
             dogEngine.syncDogs(serverDogs);
-
-            const dogActive = gameState.dogActive;
-            const dogTimestamp = gameState.dogTimestamp ? gameState.dogTimestamp.seconds : 0; 
-            if (dogActive && dogTimestamp) {
-                if (!dogManager.animationId || dogManager.currentTimestamp !== dogTimestamp) {
-                    dogManager.currentTimestamp = dogTimestamp;
-                    dogAnimationMethods.spawnDog(gameState.dogText);
-                }
-            } else {
-                if (dogManager.animationId && !dogManager.fadingOut) {
-                    dogAnimationMethods.stopDogAnimation(); 
-                }
-            }
         }
 
         function triggerFlashyEffect(userName, text) {
@@ -754,15 +727,13 @@
             const input = document.getElementById('msg-input'); const btn = document.getElementById('send-btn');
             input.disabled = true; btn.disabled = true;
             
-            // ✨ 修改這裡：統一時間與解鎖順序
             setTimeout(() => { 
                 overlay.style.display = 'none'; 
-                window.isAnimating = false; // 解除動畫鎖定
-                updateUI(); // 自動刷新畫面與按鈕狀態
+                window.isAnimating = false; 
+                updateUI(); 
             }, 3200);
         }
 
-        // ✨ 修改這裡：加入 btnId 與 disabled/enabled 機制
         async function apiCall(endpoint, bodyData, btnId = null) {
             let btnElement = null;
             let originalText = "";
@@ -786,9 +757,9 @@
             } finally {
                 if (btnElement) {
                     btnElement.innerHTML = originalText;
-                    btnElement.disabled = false; // 強制解鎖按鈕
+                    btnElement.disabled = false; 
                 }
-                updateUI(); // 強制刷新最新狀態
+                updateUI(); 
             }
         }
         
@@ -801,7 +772,7 @@
             let isExistingRoom = !!globalRoomData[currentRoom];
             let roomData = globalRoomData[currentRoom]; 
             let isNameTaken = false;
-            let playerCount = 0; // ✨ 新增：計算目前房間人數
+            let playerCount = 0; 
             
             if (roomData) {
                 if (Array.isArray(roomData)) {
@@ -813,13 +784,10 @@
                 }
             }
 
-            // ✨ 前端防護 1：檢查總房間數量上限 (10間)
             if (!isExistingRoom && Object.keys(globalRoomData).length >= 10) {
                 return await showModalAlert("⚠️ 系統目前已達 10 個房間的上限，為了品質請加入現存房間！");
             }
 
-            // ✨ 前端防護 2：檢查單一房間人數上限 (10人)
-            // 如果是現存房間，且名字沒重複 (代表是新玩家要擠進來)
             if (isExistingRoom && !isNameTaken && playerCount >= 10) {
                 return await showModalAlert("⚠️ 這個房間已經滿 10 個人了，擠不下了！請換其他房間。");
             }
@@ -829,7 +797,6 @@
                 if (!(await showModalAlert(confirmMsg, true))) return; 
             }
 
-            // ✨ 抓取設定的回合數 (若是既有房間，後端會自動忽略這項參數)
             let applyMaxRounds = 0;
             if (!isExistingRoom && document.getElementById('lobby-turn-cb').checked) {
                 applyMaxRounds = parseInt(document.getElementById('lobby-rounds-sel').value);
@@ -842,25 +809,22 @@
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('menu-btn').style.display = 'block';
 
-            if (unsubscribeLobby) unsubscribeLobby(); // ✨ 新增這行：進入遊戲後停止監聽大廳！
+            if (unsubscribeLobby) unsubscribeLobby(); 
 
             let hasShownGameOver = false; 
             const stateRef = doc(db, "room_states", currentRoom);
             
-               onSnapshot(stateRef, (docSnap) => {
+            onSnapshot(stateRef, (docSnap) => {
                 if (docSnap.exists()) {
                     let newState = docSnap.data();
                     const verifyDialog = document.getElementById('final-verify-dialog');
     
-                    // ✨ 更新：最終回合驗證跳窗 (加入「全體同步關閉」機制)
-                    // 💡 核心修復：加上 !newState.isRefereeProcessing，只要有人呼叫了裁判，就不會進入這段，而是跳到最後的 else if 把視窗關掉！
                     if (newState.isVerifyingLastMove && !newState.isGameOver && !newState.isRefereeProcessing) {
                         const myVotes = newState.verificationVotes || [];
                         
                         if (!myVotes.includes(currentPlayer) && !verifyDialog.open) {
                             
                             const showFinalVerify = () => {
-                                // 1. 找出最後一筆「成語對話」的索引位置
                                 let lastChatIndex = -1;
                                 for (let i = chatHistory.length - 1; i >= 0; i--) {
                                     if (chatHistory[i].type === "chat") {
@@ -870,7 +834,6 @@
                                 }
                                 let lastChat = lastChatIndex >= 0 ? chatHistory[lastChatIndex] : null;
                                 
-                                // 2. 檢查在這筆對話「之後」，有沒有被裁判打 ❌ 的紀錄
                                 let isRejectedAfter = false;
                                 for (let i = lastChatIndex + 1; i < chatHistory.length; i++) {
                                     if (chatHistory[i].type === "referee" && chatHistory[i].text.includes("❌")) {
@@ -879,7 +842,6 @@
                                     }
                                 }
 
-                                // 3. 終極防護：確認我們抓到的是「最新的、沒被退件的、跟當前狀態一致的」發言
                                 let isChatSynced = lastChat && 
                                                    !isRejectedAfter && 
                                                    lastChat.text === newState.pendingIdiom && 
@@ -917,11 +879,9 @@
                             verifyDialog.close();
                         }
                     } else if (verifyDialog.open) {
-                        // ✨ 只要遊戲結束，或者有人按了裁判 (isRefereeProcessing=true)，就會觸發這裡強制關閉大家的跳窗
                         verifyDialog.close();
                     }
                     
-                    // ✨ 確保玩家真的成功加入過才踢出，避免網路時間差誤判
                     if (newState.playersOrder && newState.playersOrder.includes(currentPlayer)) {
                         window.hasJoinedSuccessfully = true;
                     }
@@ -940,11 +900,9 @@
                             let scoreEntries = Object.entries(newState.scores || {});
                             scoreEntries.sort((a, b) => b[1] - a[1]); 
                             
-                            // ✨ 重新設計的同分排名邏輯
                             let currentRank = 0;
                             let lastScore = -1;
                             let rankingList = scoreEntries.map((e, index) => {
-                                // 如果分數跟前一個人不同，名次才增加
                                 if (e[1] !== lastScore) {
                                     currentRank = index + 1;
                                 }
@@ -969,7 +927,6 @@
                         let oldScores = previousScores || {};
                         let newScores = newState.scores || {};
                         
-                        // ✨ 新增：用來追蹤這回合是不是「正常接龍發言」
                         let isTurnAction = false; 
                         
                         for (let player in newScores) {
@@ -979,8 +936,6 @@
                             
                             if (diff > 0) {
                                 pendingToasts.push({ text: `🎉 ${player} +${diff} 分`, type: "success" });
-                                // ✨ 如果加分是大於等於 10 分 (正常+10, 同字+20)，代表玩家送出了成語！
-                                // 如果是裁判還清白的 +5 分，就不會觸發動畫延遲
                                 if (diff >= 10) isTurnAction = true; 
                             }
                             else if (diff < 0) {
@@ -989,8 +944,6 @@
                         }
                         
                         let newIdiom = newState.pendingIdiom;
-                        
-                        // ✨ 修正：不再比對字串一不一樣，而是看這回合有沒有人「因為接龍而加分」
                         let willAnimate = (isTurnAction && newIdiom && newIdiom.length === 4);
                         
                         let toastDelay = willAnimate ? 3200 : 0; 
@@ -1008,12 +961,10 @@
                     document.getElementById('scoreboard').innerHTML = `🏆 排行榜：${scoreHTML || '尚無資料'}`;
                     updateUI();
                 } else {
-                    // ✨ 情況 B：最後一人離開，房間狀態文件已被後端徹底刪除
                     if (window.hasJoinedSuccessfully && document.getElementById('game-screen').style.display === 'block') {
                         showToast("房間已結束並清空", "warning");
                         setTimeout(() => window.location.reload(), 1200);
                     } else {
-                        // 剛開房的瞬間，給予預設狀態
                         gameState = { scores: {}, playersOrder: [], currentTurn: null, lastIdiom: null, pendingIdiom: null, rejected: false, sosUser: null, sosCount: 0, isGameOver: false, alreadyJudged: false, roundHints: {}, maxRounds: 0, currentRound: 0 };
                         updateUI();
                     }
@@ -1025,7 +976,6 @@
                 const chatBox = document.getElementById('chat-box');
                 chatBox.innerHTML = ""; 
                 
-                // ✨ 1. 先把所有訊息抓出來存成陣列
                 let rawDocs = [];
                 snapshot.forEach((doc) => {
                     const msg = doc.data(); 
@@ -1033,8 +983,6 @@
                     rawDocs.push(msg);
                 });
 
-                // ✨ 2. 手動排序：如果時間完全一樣，強迫「玩家成語 (chat)」排在「系統提醒 (system)」前面
-                // 這樣可以解決提醒文字卡在成語中間的問題，也能確保動畫邏輯抓到正確的最後一筆成語
                 rawDocs.sort((a, b) => {
                     let tA = a.timestamp && a.timestamp.toMillis ? a.timestamp.toMillis() : Date.now();
                     let tB = b.timestamp && b.timestamp.toMillis ? b.timestamp.toMillis() : Date.now();
@@ -1048,9 +996,7 @@
                 chatHistory = rawDocs;
                 let currentValidIdiom = null; let currentPendingIdiom = null; let currentRejected = false;
                 
-                // ✨ 3. 使用排好序的 chatHistory 開始處理邏輯與畫面
                 chatHistory.forEach((msg) => {
-                    // 安全過濾字串
                     const safeText = escapeHTML(msg.text);
                     const safeUserName = escapeHTML(msg.user_name);
 
@@ -1058,7 +1004,6 @@
                     const isSystem = ["system", "join_room", "game_over", "sos_start", "referee"].includes(msg.type);
                     let mType = msg.type || "chat";
                     
-                    // 遊戲邏輯比對 (接龍狀態追蹤)
                     if (mType === "system" && safeText.includes("題目為")) {
                         let match = safeText.match(/「\*\*([^]+?)\*\*」/); 
                         currentValidIdiom = match ? match[1] : safeText.slice(-4);
@@ -1092,7 +1037,6 @@
                         }
                     }
 
-                    // 渲染到畫面上
                     chatBox.innerHTML += `
                         <div class="msg-wrapper ${wrapperClass}" style="${opacityStyle}">
                             ${infoHtml}
@@ -1105,14 +1049,12 @@
                     }
                 });
 
-                // 讓聊天室捲軸自動滾動到最下方
                 chatBox.scrollTop = chatBox.scrollHeight;
                 
-                // 4. 修正動畫觸發邏輯：
                 let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
                 
                 if (lastChat && lastChat.text.length === 4) {
-                    let msgId = lastChat.id; // 使用資料庫產生的唯一 ID 避免重複播放
+                    let msgId = lastChat.id; 
                     if (window.lastAnimatedMsgId !== msgId) {
                         window.isAnimating = true;
                         triggerFlashyEffect(lastChat.user_name, lastChat.text);
@@ -1120,11 +1062,9 @@
                     }
                 }
 
-                // ✨ 就是這裡！在監聽器的最底部補上這一行
                 updateUI(); 
             }); 
 
-            // ✨ 將設定好的 max_rounds 傳給後端
             apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "join_room", text: "加入了房間 👋", avatar: currentAvatar, max_rounds: applyMaxRounds });
         });
 
@@ -1186,35 +1126,10 @@
             }
         });
 
-        // ✨ 新增：門門的按鈕監聽器
-        document.getElementById('call-menu-btn').addEventListener('click', () => {
-            if (gameState.dogActive && gameState.dogCaller === currentPlayer) {
-                // Toggle：執行收回門門 (淡出)
-                if (!dogManager.fadingOut && dogManager.animationId) {
-                    dogAnimationMethods.dismissWithFadeout();
-                }
-            } else {
-                // 打開輸入框呼叫門門
-                document.getElementById('menu-dog-input').value = "";
-                document.getElementById('call-menu-prompt').showModal();
-            }
-        });
-
-        document.getElementById('menu-prompt-cancel').addEventListener('click', () => {
-            document.getElementById('call-menu-prompt').close();
-        });
-
-        document.getElementById('menu-prompt-confirm').addEventListener('click', () => {
-            const text = document.getElementById('menu-dog-input').value.trim();
-            apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "call_dog", text: text, avatar: currentAvatar });
-            document.getElementById('call-menu-prompt').close();
-        });
-
         const menuDialog = document.getElementById('menu-dialog');
         document.getElementById('menu-btn').addEventListener('click', () => menuDialog.showModal());
 
         document.getElementById('btn-restart').addEventListener('click', async () => {
-            // ✨ 重啟時決定新的回合制設定
             let applyMaxRounds = 0;
             if (document.getElementById('restart-turn-cb').checked) {
                 applyMaxRounds = parseInt(document.getElementById('restart-rounds-sel').value);
@@ -1258,14 +1173,13 @@
                     const msg = `確定要收回「${lastChat.text}」嗎？\n\n💡 收回代價：\n您剛才是${isPerfectMatch ? '同字' : '同音'}接龍，\n收回將扣除 ${penalty} 分 (等同這回合原地扣 5 分)！`;
 
                     if (await showModalAlert(msg, true)) {
-                        // ✨ 修改這裡：把 lastChat.id 當作 target_text 傳給後端！
                         apiCall('/revoke_chat', { 
                             room_name: currentRoom, 
                             user_name: currentPlayer, 
                             action_type: "revoke", 
                             text: "收回發言", 
                             avatar: currentAvatar,
-                            target_text: lastChat.id  // 👈 新增這一行
+                            target_text: lastChat.id  
                         });
                     }
                 } else {
@@ -1277,10 +1191,7 @@
         document.getElementById('btn-leave-room').addEventListener('click', async () => {
             const msg = "🏃 確定要刪除角色並退出嗎？\n\n注意：您的分數將被永久清除。";
             if (await showModalAlert(msg, true)) {
-                
-                // ✨ 新增這行：確認離開後，先把設定選單關掉！
                 document.getElementById('menu-dialog').close();
-                
                 apiCall('/admin_action', { 
                     room_name: currentRoom, 
                     admin_pwd: "", 
@@ -1291,9 +1202,6 @@
             }
         });
         
-        // ✨ 新增：最終驗證跳窗的按鈕功能
-        
-        // 1. 最終審查：申請裁判
         document.getElementById('final-referee-btn').addEventListener('click', async () => {
             document.getElementById('final-verify-dialog').close();
             let lastChat = [...chatHistory].reverse().find(m => m.type === "chat");
@@ -1309,9 +1217,7 @@
             }
         });
 
-        // 2. 最終審查：不需要
         document.getElementById('final-no-btn').addEventListener('click', () => {
-            // 發送一個「我投不用票」的訊號給後端
             apiCall('/system_action', { 
                 room_name: currentRoom, 
                 user_name: currentPlayer, 
@@ -1320,6 +1226,32 @@
                 avatar: currentAvatar 
             });
         });
+
+        // ✨ 門門按鈕 Toggle 與 彈窗控制邏輯
+        const menuBtn = document.getElementById('call-menu-btn');
+        const menuPrompt = document.getElementById('call-menu-prompt');
+        const menuInput = document.getElementById('menu-dog-input');
+
+        if (menuBtn && menuPrompt && menuInput) {
+            menuBtn.addEventListener('click', () => {
+                const serverDogs = gameState.activeDogs || {};
+                
+                // 如果自己名下已經有狗了，就執行收回 (淡出)
+                if (serverDogs[currentPlayer]) {
+                    dogEngine.dismissWithFadeout(currentPlayer);
+                } else {
+                    // 如果沒有，就打開輸入框準備召喚
+                    menuInput.value = "";
+                    menuPrompt.showModal();
+                }
+            });
+
+            document.getElementById('menu-prompt-cancel').addEventListener('click', () => menuPrompt.close());
+            document.getElementById('menu-prompt-confirm').addEventListener('click', () => {
+                apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "call_dog", text: menuInput.value.trim(), avatar: currentAvatar });
+                menuPrompt.close();
+            });
+        }
         
     </script>
 </body>
