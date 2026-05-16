@@ -402,11 +402,11 @@
                 for (const user in serverDogs) {
                     const sDog = serverDogs[user];
                     const ts = sDog.timestamp ? sDog.timestamp.seconds : 0;
-                    const spd = sDog.speed || 1.0;
+                    const spd = sDog.speed || 1.0; // ✨ 抓取轉速
                     
                     if (!activeDogManagers[user] || activeDogManagers[user].timestamp !== ts) {
                         if (sDog.is_fading) continue; // 💡 已經在淡出的就不重新生成了
-                        this.spawnDog(user, sDog.text, ts, spd);
+                        this.spawnDog(user, sDog.text, ts, spd); // ✨ 加入轉速參數
                     } else if (sDog.is_fading && !activeDogManagers[user].fadingOut) {
                         // 💡 後端廣播這隻狗要淡出了！全伺服器一起觸發淡出！
                         this.dismissWithFadeout(user);
@@ -414,7 +414,7 @@
                 }
                 
                 for (const user in activeDogManagers) {
-                    // 如果這隻狗被後端徹底刪除 (例如有人發言導致遊戲推進)，就瞬間移除
+                    // 如果這隻狗被後端徹底刪除，就瞬間移除
                     if (!serverDogs[user]) {
                         this.killDog(user);
                     }
@@ -434,6 +434,7 @@
                 let x = Math.random() * (parent.getBoundingClientRect().width - dogSize);
                 let y = Math.random() * (parent.getBoundingClientRect().height - dogSize);
                 
+                // ✨ 最高限制在 500% 移動速度，但旋轉速度無上限
                 let effectiveSpeed = Math.min(speed, 5);
                 let moveSpeed = 1.0 + (effectiveSpeed * 0.2); 
                 let dx = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
@@ -443,31 +444,12 @@
                 el.innerHTML = `${bubbleHtml}<img src="${DOG_HEAD_IMG_URL}" class="menu-dog-head">`;
                 parent.appendChild(el);
 
+                // ✨ 核心效果：動態計算旋轉秒數 (10s / 轉速倍率)
                 const headImg = el.querySelector('.menu-dog-head');
                 if (headImg) headImg.style.animationDuration = (10 / speed) + "s";
 
                 let manager = { element: el, x, y, dx, dy, timestamp, fadingOut: false, animId: null };
                 activeDogManagers[user] = manager;
-                
-                const animate = () => {
-                    if (!activeDogManagers[user]) return;
-                    const rect = parent.getBoundingClientRect();
-                    manager.x += manager.dx; manager.y += manager.dy;
-                    
-                    if (manager.x + dogSize >= rect.width || manager.x <= 0) { 
-                        manager.dx *= -1; manager.x = Math.max(0, Math.min(manager.x, rect.width - dogSize)); 
-                    }
-                    if (manager.y + dogSize >= rect.height || manager.y <= 0) { 
-                        manager.dy *= -1; manager.y = Math.max(0, Math.min(manager.y, rect.height - dogSize)); 
-                    }
-                    
-                    manager.element.style.left = manager.x + "px";
-                    manager.element.style.top = manager.y + "px";
-                    manager.animId = requestAnimationFrame(animate);
-                };
-                manager.animId = requestAnimationFrame(animate);
-            },
-
             killDog: function(user) {
                 const m = activeDogManagers[user];
                 if (!m) return;
@@ -485,7 +467,7 @@
                 m.element.style.opacity = "0"; 
                 
                 setTimeout(() => {
-                    this.killDog(user); // 時間到直接刪掉 DOM，絕對不會閃現！
+                    this.killDog(user); // 💡 廣播模式下不再呼叫 API，時間到直接刪除本機 DOM
                 }, 1900); 
             }
         };
@@ -1263,13 +1245,15 @@
         if (menuBtn && menuPrompt && menuInput) {
             menuBtn.addEventListener('click', () => {
                 const serverDogs = gameState.activeDogs || {};
+                const myDog = serverDogs[currentPlayer];
                 
-                // 如果自己名下已經有狗了，就執行收回 (淡出)
-                if (serverDogs[currentPlayer]) {
-                    dogEngine.dismissWithFadeout(currentPlayer);
+                // 💡 只有當自己有狗，且狗「還沒進入淡出狀態」時，點擊才是收回
+                if (myDog && !myDog.is_fading) {
+                    // 🚀 直接請後端廣播「我要淡出了」
+                    apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "dismiss_dog", text: "", avatar: currentAvatar });
                 } else {
-                    // 如果沒有，就打開輸入框準備召喚
-                    menuInput.value = "";
+                    document.getElementById('menu-dog-input').value = "";
+                    document.getElementById('menu-dog-speed').value = "1"; // 打開時重置回 100%
                     menuPrompt.showModal();
                 }
             });
