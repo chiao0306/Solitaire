@@ -442,7 +442,10 @@
                 setTimeout(() => {
                     this.stopDogAnimation();
                     dogManager.element.classList.remove('fading-out');
-                    apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "dismiss_dog", avatar: currentAvatar });
+                    
+                    // ✨ 只要在這裡面補上 `text: ""` 就可以滿足後端的嚴格驗證了！ 👇
+                    apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "dismiss_dog", text: "", avatar: currentAvatar });
+                    
                 }, 2000); 
             }
         };
