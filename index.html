@@ -450,6 +450,27 @@
 
                 let manager = { element: el, x, y, dx, dy, timestamp, fadingOut: false, animId: null };
                 activeDogManagers[user] = manager;
+                
+                // 👇👇👇 這裡是你漏掉的靈魂：彈跳動畫迴圈 👇👇👇
+                const animate = () => {
+                    if (!activeDogManagers[user]) return;
+                    const rect = parent.getBoundingClientRect();
+                    manager.x += manager.dx; manager.y += manager.dy;
+                    
+                    if (manager.x + dogSize >= rect.width || manager.x <= 0) { 
+                        manager.dx *= -1; manager.x = Math.max(0, Math.min(manager.x, rect.width - dogSize)); 
+                    }
+                    if (manager.y + dogSize >= rect.height || manager.y <= 0) { 
+                        manager.dy *= -1; manager.y = Math.max(0, Math.min(manager.y, rect.height - dogSize)); 
+                    }
+                    
+                    manager.element.style.left = manager.x + "px";
+                    manager.element.style.top = manager.y + "px";
+                    manager.animId = requestAnimationFrame(animate);
+                };
+                manager.animId = requestAnimationFrame(animate);
+            }, // 👈 這裡的括號跟逗號也補回來了！
+
             killDog: function(user) {
                 const m = activeDogManagers[user];
                 if (!m) return;
