@@ -332,14 +332,14 @@ async def call_referee(req: ActionRequest):
         snapshot = doc_ref.get(transaction=transaction)
         curr_state = snapshot.to_dict() if snapshot.exists else get_default_state()
         
-        if curr_state.get("isRefereeProcessing") or curr_state.get("alreadyJudged"):
-            return {"error": "裁判正在審理中或已經判決過囉！"}
+        # ✨ 檢查是否有人正在使用任何技能
+        if curr_state.get("isRefereeProcessing") or curr_state.get("isHintProcessing") or curr_state.get("alreadyJudged"):
+            return {"error": "系統忙碌中或已經判決過囉！"}
         
-        # 鎖定狀態
-        transaction.update(doc_ref, {"isRefereeProcessing": True})
+        # ✨ 鎖定並紀錄是「誰」按的
+        transaction.update(doc_ref, {"isRefereeProcessing": True, "refereeCaller": req.user_name})
         return {"success": True, "state": curr_state}
 
-    # 執行鎖定交易
     lock_res = lock_referee_transaction(transaction_obj, room_ref)
     if isinstance(lock_res, dict) and "error" in lock_res:
         raise HTTPException(status_code=403, detail=lock_res["error"])
@@ -351,7 +351,6 @@ async def call_referee(req: ActionRequest):
         
         state = lock_res["state"]
         state["alreadyJudged"] = True
-        state["isRefereeProcessing"] = False 
         
         if '❌' in result_text:
             state["rejected"] = True
@@ -375,7 +374,10 @@ async def call_referee(req: ActionRequest):
                 if not (last_user == prev_sos_user and prev_sos_count < 2):
                     state["scores"][last_user] += 5
         
-        # 存回狀態並發布訊息
+        # ✨ 判定完成，解除鎖定
+        state["isRefereeProcessing"] = False
+        state["refereeCaller"] = None
+        
         update_current_turn(state)
         save_room_state(req.room_name, state)
         db.collection(CHAT_COLLECTION).add({
@@ -384,83 +386,96 @@ async def call_referee(req: ActionRequest):
         })
         
     except Exception as e:
-        # 發生錯誤時務必解鎖，否則房間會卡死
-        db.collection(STATE_COLLECTION).document(req.room_name).update({"isRefereeProcessing": False})
+        db.collection(STATE_COLLECTION).document(req.room_name).update({"isRefereeProcessing": False, "refereeCaller": None})
         raise HTTPException(status_code=500, detail=f"AI 裁判出錯：{str(e)}")
 
     return {"status": "success"}
 
 @app.post("/buy_hint")
 async def buy_hint(req: ActionRequest):
-    state = get_room_state(req.room_name)
-    user = req.user_name
-    
-    # 🚨 先不要存檔！我們先把變化算好放在變數裡，等成功了再存
-    new_score = state.get("scores", {}).get(user, 50) - 5
-    is_game_over = state.get("isGameOver", False)
-    if new_score <= 0:
-        is_game_over = True
-        
-    hints = state.get("roundHints", {})
-    new_hints_count = hints.get(user, 0) + 1
+    transaction_obj = db.transaction()
+    room_ref = db.collection(STATE_COLLECTION).document(req.room_name)
 
-    if req.action_type == "hint_1":
-        target_char = req.target_text[-1]
-        
-        # ✨ 升級 1：在後端先查好這個字的「注音」
-        try:
-            char_bopomofo = pinyin(target_char, style=Style.BOPOMOFO)[0][0]
-        except:
-            char_bopomofo = ""
+    # ✨ 將提示也包裝進交易鎖機制，防止同時按鈕的 Race Condition
+    @firestore.transactional
+    def lock_hint_transaction(transaction, doc_ref):
+        snapshot = doc_ref.get(transaction=transaction)
+        curr_state = snapshot.to_dict() if snapshot.exists else get_default_state()
 
-        # ✨ 升級 2：把注音塞進 Prompt 裡，嚴厲警告 AI 不准亂給
-        prompt = (
-            f"你現在是嚴格的成語接龍小幫手。玩家上一個詞的結尾字是「{target_char}」"
-            f"{f'（注音：{char_bopomofo}）' if char_bopomofo else ''}。\n"
-            f"請提供「一個」合法的繁體中文四字成語，該成語的「第一個字」必須與「{target_char}」讀音完全相同（含聲調）或同字。\n"
-            f"只需回傳該成語本身（四個字），絕對不要輸出任何標點符號或額外解釋。"
-        )
-        
-        res = model.generate_content(prompt, safety_settings=custom_safety_settings)
-        ans = res.text.strip()[:4]
-        
-        # ✨ 升級 3：抓取「第二個字」作為有用的提示
-        hint_char = ans[1] if len(ans) >= 2 else ans[-1]
-        
-        db.collection(CHAT_COLLECTION).add({
-            "room_name": req.room_name, "user_name": "Referee (AI)", 
-            "text": f"💡 第一次提示：下一句的第二個字可以是「**{hint_char}**」", 
-            "type": "referee", "hint_answer": ans, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
-        })
-        
-    elif req.action_type == "hint_2":
-        docs = list(db.collection(CHAT_COLLECTION)\
-            .where("room_name", "==", req.room_name)\
-            .where("requested_by", "==", req.user_name)\
-            .where("type", "==", "referee")\
-            .order_by("timestamp", direction=firestore.Query.DESCENDING)\
-            .limit(1)\
-            .stream())
-        
-        target_idiom = docs[0].to_dict().get("hint_answer") if docs else None
-            
-        if target_idiom:
-            prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
+        if curr_state.get("isHintProcessing") or curr_state.get("isRefereeProcessing"):
+            return {"error": "系統忙碌中，請稍候！"}
+
+        transaction.update(doc_ref, {"isHintProcessing": True, "hintCaller": req.user_name})
+        return {"success": True, "state": curr_state}
+
+    lock_res = lock_hint_transaction(transaction_obj, room_ref)
+    if isinstance(lock_res, dict) and "error" in lock_res:
+        raise HTTPException(status_code=403, detail=lock_res["error"])
+
+    try:
+        # AI 生成邏輯保持不變 (已經是注音升級版)
+        if req.action_type == "hint_1":
+            target_char = req.target_text[-1]
+            try: char_bopomofo = pinyin(target_char, style=Style.BOPOMOFO)[0][0]
+            except: char_bopomofo = ""
+
+            prompt = (
+                f"你現在是嚴格的成語接龍小幫手。玩家上一個詞的結尾字是「{target_char}」"
+                f"{f'（注音：{char_bopomofo}）' if char_bopomofo else ''}。\n"
+                f"請提供「一個」合法的繁體中文四字成語，該成語的「第一個字」必須與「{target_char}」讀音完全相同（含聲調）或同字。\n"
+                f"只需回傳該成語本身（四個字），絕對不要輸出任何標點符號或額外解釋。"
+            )
             res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+            ans = res.text.strip()[:4]
+            hint_char = ans[1] if len(ans) >= 2 else ans[-1]
+            
             db.collection(CHAT_COLLECTION).add({
                 "room_name": req.room_name, "user_name": "Referee (AI)", 
-                "text": f"💡 第二次提示 (意思)：\n{res.text.strip()}", 
-                "type": "referee", "hint_answer": target_idiom, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
+                "text": f"💡 第一次提示：下一句的第二個字可以是「**{hint_char}**」", 
+                "type": "referee", "hint_answer": ans, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
             })
-        else:
-            raise HTTPException(status_code=400, detail="找不到前一次的提示紀錄！")
+            
+        elif req.action_type == "hint_2":
+            docs = list(db.collection(CHAT_COLLECTION)\
+                .where("room_name", "==", req.room_name)\
+                .where("requested_by", "==", req.user_name)\
+                .where("type", "==", "referee")\
+                .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+                .limit(1).stream())
+            
+            target_idiom = docs[0].to_dict().get("hint_answer") if docs else None
+            if target_idiom:
+                prompt = f"請解釋成語「{target_idiom}」的意思，但請注意：在解釋內容中絕對不能出現「{target_idiom}」這四個字中的任何一個字。請用繁體中文回答。"
+                res = model.generate_content(prompt, safety_settings=custom_safety_settings)
+                db.collection(CHAT_COLLECTION).add({
+                    "room_name": req.room_name, "user_name": "Referee (AI)", 
+                    "text": f"💡 第二次提示 (意思)：\n{res.text.strip()}", 
+                    "type": "referee", "hint_answer": target_idiom, "requested_by": req.user_name, "timestamp": firestore.SERVER_TIMESTAMP
+                })
+            else:
+                raise HTTPException(status_code=400, detail="找不到前一次的提示紀錄！")
 
-    # ✨ 只有當上面 AI 生成與資料庫讀取都沒報錯時，我們才真正扣分存檔！
-    state["scores"][user] = new_score
-    state["isGameOver"] = is_game_over
-    state["roundHints"][user] = new_hints_count
-    update_current_turn(state)
-    save_room_state(req.room_name, state)
+        # ✨ 為了安全，重新抓取最新的狀態再扣分，防止這 2 秒內有人講話被覆蓋
+        fresh_snap = room_ref.get()
+        state = fresh_snap.to_dict() if fresh_snap.exists else lock_res["state"]
+        user = req.user_name
+
+        state["scores"][user] = state.get("scores", {}).get(user, 50) - 5
+        if state["scores"][user] <= 0: state["isGameOver"] = True
+            
+        state["roundHints"] = state.get("roundHints", {})
+        state["roundHints"][user] = state["roundHints"].get(user, 0) + 1
+        
+        # ✨ 提示完成，解除鎖定
+        state["isHintProcessing"] = False
+        state["hintCaller"] = None
+        
+        update_current_turn(state)
+        save_room_state(req.room_name, state)
+
+    except Exception as e:
+        room_ref.update({"isHintProcessing": False, "hintCaller": None})
+        raise HTTPException(status_code=500, detail=f"AI 提示出錯：{str(e)}")
 
     return {"status": "success"}
 
