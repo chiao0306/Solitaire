@@ -333,16 +333,29 @@ async def system_action(req: ActionRequest):
             state["updated_at"] = firestore.SERVER_TIMESTAMP
             transaction.set(room_doc_ref, state)
 
+        # ✨ 如果是收回門門，不洗頻，直接提早結束不發送對話
+        if req.action_type == "dismiss_dog":
+            return {"success": True}
+
         display_text = req.text
+        msg_type = req.action_type
+        msg_user_name = req.user_name
+
         if req.action_type == "game_over":
             display_text = f"【系統】{req.user_name} 投降了 🏳️"
+        elif req.action_type == "call_dog":
+            # ✨ 修正：確保呼叫門門的系統提示不會被覆蓋
+            dog_txt = (req.text or "").strip()[:10] if req.text else None
+            display_text = f"【系統】**{req.user_name}** 覺得太安靜了，呼叫了「門門」出來晃晃！"
+            if dog_txt: display_text += f"（門門喃喃自語：{dog_txt}）"
+            msg_type = "system" # 強制轉為系統訊息
+            msg_user_name = "System"
 
         transaction.set(chat_doc_ref, {
-            "room_name": req.room_name, "user_name": req.user_name, "text": display_text, 
-            "type": req.action_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
+            "room_name": req.room_name, "user_name": msg_user_name, "text": display_text, 
+            "type": msg_type, "avatar": req.avatar, "timestamp": firestore.SERVER_TIMESTAMP
         })
         return {"success": True}
-
     # 💡 執行交易並檢查有沒有錯誤回傳
     result = process_system_transaction(transaction_obj, room_ref, chat_ref, meta_ref)
     if result and "error" in result:
@@ -678,12 +691,6 @@ async def admin_action(req: AdminRequest):
             if state.get("dogCaller") == target:
                 state["dogActive"] = False
                 state["dogCaller"] = None
-            if target in state.get("scores", {}):
-                del state["scores"][target]
-                
-            if state.get("sosUser") == target:
-                state["sosUser"] = None
-                state["sosCount"] = 0
 
             # 回合制計算更新
             if target in state.get("trackedPlayers", []):
