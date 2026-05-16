@@ -692,8 +692,9 @@
                     let newState = docSnap.data();
                     const verifyDialog = document.getElementById('final-verify-dialog');
     
-                    // ✨ 更新：最終回合驗證跳窗 (加入「等聊天紀錄同步」與「防搶拍」機制)
-                    if (newState.isVerifyingLastMove && !newState.isGameOver) {
+                    // ✨ 更新：最終回合驗證跳窗 (加入「全體同步關閉」機制)
+                    // 💡 核心修復：加上 !newState.isRefereeProcessing，只要有人呼叫了裁判，就不會進入這段，而是跳到最後的 else if 把視窗關掉！
+                    if (newState.isVerifyingLastMove && !newState.isGameOver && !newState.isRefereeProcessing) {
                         const myVotes = newState.verificationVotes || [];
                         
                         if (!myVotes.includes(currentPlayer) && !verifyDialog.open) {
@@ -732,12 +733,9 @@
                                 let msgId = lastChat.id;
                                 let willAnimate = lastChat.text.length === 4 && window.lastAnimatedMsgId !== msgId;
 
-                                // ✨ 新增核心修正：檢查加分跳窗 (Toast) 是否還在畫面上
-                                // 我們去檢查 toast-container 裡面還有沒有子元素
                                 const toastContainer = document.getElementById('toast-container');
                                 const isToastShowing = toastContainer && toastContainer.childElementCount > 0;
 
-                                // 💡 判斷條件：如果正在播特效、準備播特效，或是加分跳窗還沒消失，就繼續延後 0.3 秒再檢查
                                 if (window.isAnimating || willAnimate || isToastShowing) {
                                     setTimeout(showFinalVerify, 300);
                                     return;
@@ -753,13 +751,13 @@
                                 if (!verifyDialog.open) verifyDialog.showModal();
                             };
 
-                            // ✨ 漏掉的呼叫與括號補在這裡！
                             showFinalVerify();
 
                         } else if (myVotes.includes(currentPlayer) && verifyDialog.open) {
                             verifyDialog.close();
                         }
                     } else if (verifyDialog.open) {
+                        // ✨ 只要遊戲結束，或者有人按了裁判 (isRefereeProcessing=true)，就會觸發這裡強制關閉大家的跳窗
                         verifyDialog.close();
                     }
                     
