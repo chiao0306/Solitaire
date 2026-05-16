@@ -80,9 +80,15 @@ def get_default_state():
         "isVerifyingLastMove": False, "verificationVotes": [],
         "isRefereeProcessing": False, "refereeCaller": None,
         "isHintProcessing": False, "hintCaller": None,
-        "isRandomProcessing": False, "randomCaller": None # ✨ 新增隨機出題狀態預設值
+        "isRandomProcessing": False, "randomCaller": None,
+        
+        # ✨ 新增：狗頭 (門門) 專用狀態
+        "dogActive": False,         # 狗頭是否正在飛
+        "dogText": None,            # 狗頭頭上的對話內容
+        "dogCaller": None,          # 是哪個玩家發動的
+        "dogTimestamp": 0           # 發動的時間戳 (前端防呆用)
     }
-
+    
 def update_current_turn(state):
     if state.get("sosUser"):
         state["currentTurn"] = state["sosUser"]
@@ -134,6 +140,7 @@ async def send_chat(req: ChatRequest):
     # ✨ 2. 定義 Transaction 內容
     @firestore.transactional
     def process_chat_transaction(transaction, room_doc_ref, chat_doc_ref):
+        state["dogActive"] = False
         doc = room_doc_ref.get(transaction=transaction)
         state = doc.to_dict() if doc.exists else get_default_state()
         
@@ -302,6 +309,25 @@ async def system_action(req: ActionRequest):
                     state["isGameOver"] = True
             changed = True
 
+        # ✨ 新增：發動狗頭 (門門)
+        elif req.action_type == "call_dog":
+            dog_txt = (req.text or "").strip()[:10] if req.text else None
+            state["dogActive"] = True
+            state["dogText"] = dog_txt if dog_txt else None
+            state["dogCaller"] = req.user_name
+            state["dogTimestamp"] = firestore.SERVER_TIMESTAMP
+            changed = True
+            
+            display_text = f"【系統】**{req.user_name}** 覺得太安靜了，呼叫了「門門」出來晃晃！"
+            if dog_txt: display_text += f"（門門喃喃自語：{dog_txt}）"
+
+        # ✨ 新增：收回門門
+        elif req.action_type == "dismiss_dog":
+            if state.get("dogCaller") == req.user_name:
+                state["dogActive"] = False
+                state["dogCaller"] = None
+                changed = True
+
         if changed:
             update_current_turn(state)
             state["updated_at"] = firestore.SERVER_TIMESTAMP
@@ -396,6 +422,7 @@ async def call_referee(req: ActionRequest):
         
         # ✨ 判定完成，解除鎖定
         state["isRefereeProcessing"] = False
+        state["dogActive"] = False
         state["refereeCaller"] = None
         
         update_current_turn(state)
@@ -488,6 +515,7 @@ async def buy_hint(req: ActionRequest):
         
         # ✨ 提示完成，解除鎖定
         state["isHintProcessing"] = False
+        state["dogActive"] = False
         state["hintCaller"] = None
         
         update_current_turn(state)
@@ -548,6 +576,7 @@ async def random_topic(req: ActionRequest):
             
             # ✨ 出題完成，解除全局出題鎖定狀態
             state["isRandomProcessing"] = False
+            state["dogActive"] = False
             state["randomCaller"] = None
             
             update_current_turn(state)
