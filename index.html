@@ -454,7 +454,7 @@
         });
         
         function updateUI() {
-            if (window.isAnimating) return; // ✨ 新增：如果正在播放動畫，暫停 UI 更新，避免死鎖
+            if (window.isAnimating) return; 
             
             const turnInfo = document.getElementById('turn-info'); 
             const msgInput = document.getElementById('msg-input');
@@ -496,32 +496,6 @@
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
 
-            let hasChat = chatHistory.some(m => m.type === 'chat');
-            
-            // ✨ 修改這裡：只要「已經判過」或「正在判定中」，所有人都要鎖定按鈕
-            refBtn.disabled = (
-                gameState.alreadyJudged || 
-                gameState.isRefereeProcessing || 
-                !hasChat || 
-                gameState.isGameOver
-            );
-            
-            // ✨ 優化體驗：如果是正在判定中，改變文字提醒大家
-            if (gameState.isRefereeProcessing) {
-                refBtn.innerHTML = "⏳ 裁判審理中...";
-            } else {
-                refBtn.innerHTML = "⚖️ 裁判";
-            }
-
-            let sosString = ""; let remainingSos = 0;
-            if (gameState.sosUser) { 
-                remainingSos = 3 - gameState.sosCount; 
-                sosString = ` <span style="color: #eab308;">(🚨 逃生中：剩 ${remainingSos} 次)</span>`; 
-            }
-
-            let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
-            if (!targetWord) targetWord = "";
-
             // ✨ 1. 取得全局動作鎖狀態與橫幅元素
             const procBanner = document.getElementById('processing-banner');
             let isRefProc = gameState.isRefereeProcessing;
@@ -538,6 +512,15 @@
             } else {
                 procBanner.style.display = 'none';
             }
+
+            let sosString = ""; let remainingSos = 0;
+            if (gameState.sosUser) { 
+                remainingSos = 3 - gameState.sosCount; 
+                sosString = ` <span style="color: #eab308;">(🚨 逃生中：剩 ${remainingSos} 次)</span>`; 
+            }
+
+            let targetWord = gameState.rejected ? gameState.lastIdiom : gameState.pendingIdiom;
+            if (!targetWord) targetWord = "";
 
             // ✨ 3. 玩家回合按鈕控制
             if (isMyTurn) {
@@ -580,6 +563,7 @@
 
             // ✨ 4. 裁判與提示按鈕的特殊文字處理
             let hasChat = chatHistory.some(m => m.type === 'chat');
+            // 🚨 這裡已經修正乾淨，只剩下唯一一個 hasChat 判斷
             refBtn.disabled = (gameState.alreadyJudged || anyProcessing || !hasChat || gameState.isGameOver);
             
             if (isRefProc) refBtn.innerHTML = "⏳ 裁判審理中...";
