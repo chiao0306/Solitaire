@@ -496,11 +496,12 @@
                 isMyTurn = (gameState.currentTurn === currentPlayer);
             }
 
-            // ✨ 1. 取得全局動作鎖狀態與橫幅元素
+            // ✨ 1. 取得全局動作鎖狀態與橫幅元素（加入隨機出題鎖）
             const procBanner = document.getElementById('processing-banner');
             let isRefProc = gameState.isRefereeProcessing;
             let isHintProc = gameState.isHintProcessing;
-            let anyProcessing = isRefProc || isHintProc;
+            let isRandomProc = gameState.isRandomProcessing; // 新增：隨機出題中狀態
+            let anyProcessing = isRefProc || isHintProc || isRandomProc; 
 
             // ✨ 2. 控制畫面中央的跳窗橫幅顯示
             if (isRefProc) {
@@ -508,6 +509,9 @@
                 procBanner.style.display = 'block';
             } else if (isHintProc) {
                 procBanner.innerHTML = `💡 <b>${gameState.hintCaller || '有人'}</b> 正在購買提示<br><span style="font-size:13px; color:#fbbf24; display:block; margin-top:5px;">AI 正在思考中，請稍候...</span>`;
+                procBanner.style.display = 'block';
+            } else if (isRandomProc) {
+                procBanner.innerHTML = `🎲 <b>${gameState.randomCaller || '有人'}</b> 正在請求 AI 出題<br><span style="font-size:13px; color:#fbbf24; display:block; margin-top:5px;">AI 正在努力想題目中，請稍候...</span>`;
                 procBanner.style.display = 'block';
             } else {
                 procBanner.style.display = 'none';
@@ -532,11 +536,11 @@
                 }
                 
                 turnInfo.style.color = "#4CAF50"; 
-                // 💡 核心修改：不管有沒有人在發動技能，打字框永遠為你敞開！
+                // 💡 核心設計：不論 AI 是否在運作，輸入框永遠保持解開，供玩家隨時輸入
                 msgInput.disabled = false; 
                 
                 if (anyProcessing) {
-                    // 如果有人在等 AI，把所有行動按鈕鎖住
+                    // 如果有人在等 AI（含隨機出題），把所有行動按鈕鎖住，防止搶拍
                     sendBtn.disabled = true; hintBtn.disabled = true; sosBtn.disabled = true; surBtn.disabled = true;
                 } else {
                     // 沒人在等 AI，正常開放
@@ -563,13 +567,13 @@
 
             // ✨ 4. 裁判與提示按鈕的特殊文字處理
             let hasChat = chatHistory.some(m => m.type === 'chat');
-            // 🚨 這裡已經修正乾淨，只剩下唯一一個 hasChat 判斷
             refBtn.disabled = (gameState.alreadyJudged || anyProcessing || !hasChat || gameState.isGameOver);
             
             if (isRefProc) refBtn.innerHTML = "⏳ 裁判審理中...";
             else refBtn.innerHTML = "⚖️ 裁判";
             
             if (isHintProc) hintBtn.innerHTML = "⏳ 提示處理中...";
+            else hintBtn.innerHTML = "💡 提示";
         }
 
         function triggerFlashyEffect(userName, text) {
