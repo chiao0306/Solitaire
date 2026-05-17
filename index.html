@@ -444,7 +444,8 @@
                 let dy = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 
                 // 💡 加入玩家名字(設為專屬紫色)、冒號、換行，並限制最大寬度讓太長的字會自動換行
-                let bubbleHtml = text ? `<div class="dog-speech-bubble" style="white-space: normal; word-break: break-all; min-width: 80px; max-width: 160px; line-height: 1.4;"><span style="color:#a855f7;">${escapeHTML(user)}：</span><br>${escapeHTML(text)}</div>` : "";
+                // 💡 拿掉 min-width，改用 width: max-content 讓它自動貼合短文字，並配合 max-width 自動換行
+                let bubbleHtml = text ? `<div class="dog-speech-bubble" style="white-space: pre-wrap; word-wrap: break-word; width: max-content; max-width: 160px; line-height: 1.4;"><span style="color:#a855f7;">${escapeHTML(user)}：</span><br>${escapeHTML(text)}</div>` : "";
                 el.innerHTML = `${bubbleHtml}<img src="${DOG_HEAD_IMG_URL}" class="menu-dog-head">`;
                 parent.appendChild(el);
 
