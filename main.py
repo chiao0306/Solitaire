@@ -308,7 +308,8 @@ async def system_action(req: ActionRequest):
 
         # ✨ 新增：發動個人的狗頭 (門門)，包含轉速
         elif req.action_type == "call_dog":
-            dog_txt = (req.text or "").strip()[:10] if req.text else None
+            # 💡 把原本的 [:10] 改成 [:20]
+            dog_txt = (req.text or "").strip()[:20] if req.text else None
             
             # 解析轉速 (預設 1.0)
             speed = 1.0
