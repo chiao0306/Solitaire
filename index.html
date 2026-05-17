@@ -357,9 +357,9 @@
     </dialog>
 
     <dialog id="call-menu-prompt">
-        <div style="font-size: 16px; font-weight: bold; text-align: center; line-height: 1.4;">要讓「門門」說些什麼嗎？<br><span style="font-size: 13px; color: #9ca3af;">(限制最多 10 個字)</span></div>
-        <input type="text" id="menu-dog-input" maxlength="10" placeholder="留白則單純召喚..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.3); color: #fff;">
-        
+        <div style="font-size: 16px; font-weight: bold; text-align: center; line-height: 1.4;">要讓「門門」說些什麼嗎？<br><span style="font-size: 13px; color: #9ca3af;">(限制最多 20 個字)</span></div>
+        <input type="text" id="menu-dog-input" placeholder="留白則單純召喚..." style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.3); color: #fff;">
+
         <div style="margin-top: 5px; margin-bottom: 5px;">
             <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: #ccc;">🐕 門門的 High 度：</div>
                 <select id="menu-dog-speed" style="width: 100%; padding: 10px; margin-bottom: 0; border-radius: 8px; border: 1px solid #4b5563; background: rgba(0,0,0,0.5); color: #fff; font-size: 14px;">
@@ -443,7 +443,8 @@
                 let dx = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 let dy = moveSpeed * (Math.random() > 0.5 ? 1 : -1);
                 
-                let bubbleHtml = text ? `<div class="dog-speech-bubble">${escapeHTML(text)}</div>` : "";
+                // 💡 加入玩家名字(設為專屬紫色)、冒號、換行，並限制最大寬度讓太長的字會自動換行
+                let bubbleHtml = text ? `<div class="dog-speech-bubble" style="white-space: normal; word-break: break-all; min-width: 80px; max-width: 160px; line-height: 1.4;"><span style="color:#a855f7;">${escapeHTML(user)}：</span><br>${escapeHTML(text)}</div>` : "";
                 el.innerHTML = `${bubbleHtml}<img src="${DOG_HEAD_IMG_URL}" class="menu-dog-head">`;
                 parent.appendChild(el);
 
@@ -1310,10 +1311,16 @@
             document.getElementById('menu-prompt-cancel').addEventListener('click', () => menuPrompt.close());
             document.getElementById('menu-prompt-confirm').addEventListener('click', () => {
                 const text = document.getElementById('menu-dog-input').value.trim();
+                
+                // 💡 新增前端防呆：檢查真正打完的中文字數，超過就擋下並警告
+                if (text.length > 20) {
+                    showToast("⚠️ 字數不能超過 20 個字喔！", "warning");
+                    return;
+                }
+
                 // ✨ 抓取使用者選擇的轉速
                 const speed = document.getElementById('menu-dog-speed').value;
                 
-                // ✨ 利用 target_text 把速度傳給後端
                 apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "call_dog", text: text, avatar: currentAvatar, target_text: speed });
                 document.getElementById('call-menu-prompt').close();
             });
