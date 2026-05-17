@@ -445,7 +445,20 @@
                 
                 // 💡 加入玩家名字(設為專屬紫色)、冒號、換行，並限制最大寬度讓太長的字會自動換行
                 // 💡 拿掉 min-width，改用 width: max-content 讓它自動貼合短文字，並配合 max-width 自動換行
-                let bubbleHtml = text ? `<div class="dog-speech-bubble" style="white-space: pre-wrap; word-wrap: break-word; width: max-content; max-width: 160px; line-height: 1.4;"><span style="color:#a855f7;">${escapeHTML(user)}：</span><br>${escapeHTML(text)}</div>` : "";
+                // 💡 1. 處理每 10 個字強制換行的邏輯
+                let formattedText = "";
+                if (text) {
+                    let chunks = [];
+                    for (let i = 0; i < text.length; i += 10) {
+                        // 每次切 10 個字，並做好安全跳脫
+                        chunks.push(escapeHTML(text.substring(i, i + 10)));
+                    }
+                    // 用換行符號把切好的字串接起來
+                    formattedText = chunks.join("<br>");
+                }
+
+                // 💡 2. 塞進泡泡中 (拿掉原本的 max-width 限制，因為我們已經手動斷行了)
+                let bubbleHtml = text ? `<div class="dog-speech-bubble" style="white-space: pre-wrap; word-wrap: break-word; width: max-content; line-height: 1.4;"><span style="color:#a855f7;">${escapeHTML(user)}：</span><br>${formattedText}</div>` : "";
                 el.innerHTML = `${bubbleHtml}<img src="${DOG_HEAD_IMG_URL}" class="menu-dog-head">`;
                 parent.appendChild(el);
 
@@ -1313,13 +1326,12 @@
             document.getElementById('menu-prompt-confirm').addEventListener('click', () => {
                 const text = document.getElementById('menu-dog-input').value.trim();
                 
-                // 💡 新增前端防呆：檢查真正打完的中文字數，超過就擋下並警告
+                // 💡 改用 showModalAlert，它的圖層才能蓋過現有的輸入跳窗！
                 if (text.length > 20) {
-                    showToast("⚠️ 字數不能超過 20 個字喔！", "warning");
+                    showModalAlert("⚠️ 字數不能超過 20 個字喔！");
                     return;
                 }
-
-                // ✨ 抓取使用者選擇的轉速
+    
                 const speed = document.getElementById('menu-dog-speed').value;
                 
                 apiCall('/system_action', { room_name: currentRoom, user_name: currentPlayer, action_type: "call_dog", text: text, avatar: currentAvatar, target_text: speed });
