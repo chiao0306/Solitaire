@@ -397,7 +397,17 @@ async def call_referee(req: ActionRequest):
         raise HTTPException(status_code=403, detail=lock_res["error"])
     
     try:
-        prompt = f"請判斷「{req.target_text}」是否為正確的中文成語。請用繁體中文回答：『✅ 是成語』或『❌ 不是成語』，並簡述解釋。"
+        prompt = f"你現在是專業且權威的中文成語接龍裁判。
+        請判斷「{req.target_text}」是否為正確的中文成語或可接受的四字熟語。
+        
+        【判定依據與標準（寬鬆模式）】
+        1. 嚴格成語：優先查考《教育部成語典》。若為其中收錄的正題或附錄成語，一律視為「✅ 是成語」。
+        2. 四字熟語：若成語典未收錄，但屬於《重編國語辭典修訂本》中有記載的四字固定詞彙、熟語、俗諺、慣用語（如：亂七八糟、大刀闊斧、莫名其妙），亦視為「✅ 是成語」。
+        3. 違規判定：若只是現代生活隨意組合的四字造句（如：天氣很好、我想吃飯），或查無任何典籍文獻出處，請判斷為「❌ 不是成語」。
+        
+        請嚴格遵守以下格式用繁體中文回答，不要夾帶額外的聊天內容：
+        『✅ 是成語』或『❌ 不是成語』
+        【典籍出處/釋義】（若不是成語，請簡單說明理由；若是成語，請簡述其在辭典中的典故出處或核心字義）"
         res = model.generate_content(prompt, safety_settings=custom_safety_settings)
         result_text = res.text.strip() if res and res.text else "⚠️ 裁判暫時無法回應"
         
@@ -493,6 +503,7 @@ async def buy_hint(req: ActionRequest):
 
             prompt = (
                 f"你現在是嚴格的成語接龍小幫手。玩家上一個詞的結尾字是「{target_char}」"
+                f"你所提供的成語，必須嚴格符合《教育部成語典》或《重編國語辭典修訂本》所收錄的規範。"
                 f"{f'（注音：{char_bopomofo}）' if char_bopomofo else ''}。\n"
                 f"請提供「一個」合法的繁體中文四字成語，該成語的「第一個字」必須與「{target_char}」讀音完全相同（含聲調）或同字。\n"
                 f"只需回傳該成語本身（四個字），絕對不要輸出任何標點符號或額外解釋。"
