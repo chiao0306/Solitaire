@@ -397,7 +397,7 @@ async def call_referee(req: ActionRequest):
         raise HTTPException(status_code=403, detail=lock_res["error"])
     
     try:
-        prompt = f"你現在是專業且權威的中文成語接龍裁判。
+        prompt = f"""你現在是專業且權威的中文成語接龍裁判。
         請判斷「{req.target_text}」是否為正確的中文成語或可接受的四字熟語。
         
         【判定依據與標準（寬鬆模式）】
@@ -407,7 +407,7 @@ async def call_referee(req: ActionRequest):
         
         請嚴格遵守以下格式用繁體中文回答，不要夾帶額外的聊天內容：
         『✅ 是成語』或『❌ 不是成語』
-        【典籍出處/釋義】（若不是成語，請簡單說明理由及依據；若是成語，請簡述其在辭典中的典故出處或核心字義）"
+        【典籍出處/釋義】（若不是成語，請簡單說明理由及依據；若是成語，請簡述其在辭典中的典故出處或核心字義）"""
         res = model.generate_content(prompt, safety_settings=custom_safety_settings)
         result_text = res.text.strip() if res and res.text else "⚠️ 裁判暫時無法回應"
         
